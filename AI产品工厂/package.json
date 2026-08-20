@@ -1,0 +1,36 @@
+{
+  "name": "ai-product-factory",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -k -n web,worker -c blue,green \"npm run dev --workspace @factory/web\" \"npm run dev --workspace @factory/worker\"",
+    "dev:web": "npm run dev --workspace @factory/web",
+    "worker": "npm run start --workspace @factory/worker",
+    "build": "npm run build --workspace @factory/web",
+    "manuals:verify": "cd docs && shasum -a 256 -c MANUALS.sha256",
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "9.6.0",
+    "@types/node": "22.19.15",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4",
+    "concurrently": "10.0.5",
+    "eslint": "9.39.5",
+    "eslint-config-next": "16.3.1",
+    "tsx": "4.20.6",
+    "typescript": "5.9.3",
+    "vitest": "4.1.11"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

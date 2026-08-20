@@ -1,0 +1,14 @@
+{
+  "name": "@factory/records",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@factory/shared": "*",
+    "better-sqlite3": "13.0.3"
+  }
+}
