@@ -10,6 +10,7 @@ import {
   type ProductProject,
   type ProductionEvent,
   type ProductionRun,
+  type ProductionStage,
   type RunEvent,
   type ProjectSummary
 } from "@factory/shared";
@@ -22,13 +23,18 @@ export interface ProjectRegistry {
 }
 
 export interface ProductionRunStore {
-  create(projectId: string, objective: string): ProductionRun;
+  create(projectId: string, objective: string, stage?: ProductionStage): ProductionRun;
   get(id: string): ProductionRun | null;
   listForProject(projectId: string): ProductionRun[];
   claimNext(workerId: string): ProductionRun | null;
   append(runId: string, type: string, payload?: Record<string, unknown>): RunEvent;
   events(runId: string, afterSequence?: number): RunEvent[];
   transition(id: string, status: ProductionRun["status"], error?: string | null): ProductionRun;
+  approveAndCreateNext(
+    id: string,
+    nextObjective: string,
+    nextStage: ProductionStage
+  ): { completedRun: ProductionRun; nextRun: ProductionRun };
 }
 
 type ProjectRow = {
@@ -55,6 +61,7 @@ type EventRow = {
 type RunRow = {
   id: string;
   project_id: string;
+  stage: ProductionStage;
   objective: string;
   status: ProductionRun["status"];
   worker_id: string | null;
@@ -160,6 +167,7 @@ export class SqliteProjectRegistry implements ProjectRegistry {
       CREATE TABLE IF NOT EXISTS production_runs (
         id TEXT PRIMARY KEY,
         project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        stage TEXT NOT NULL DEFAULT 'intake',
         objective TEXT NOT NULL,
         status TEXT NOT NULL,
         worker_id TEXT,
@@ -182,6 +190,13 @@ export class SqliteProjectRegistry implements ProjectRegistry {
       CREATE INDEX IF NOT EXISTS run_events_run_sequence
         ON run_events(run_id, sequence);
     `);
+
+    const runColumns = database.prepare("PRAGMA table_info(production_runs)").all() as Array<{
+      name: string;
+    }>;
+    if (!runColumns.some((column) => column.name === "stage")) {
+      database.exec("ALTER TABLE production_runs ADD COLUMN stage TEXT NOT NULL DEFAULT 'intake'");
+    }
   }
 
   save(project: ProductProject, event: ProductionEvent) {
@@ -268,6 +283,7 @@ const toRun = (row: RunRow): ProductionRun =>
   productionRunSchema.parse({
     id: row.id,
     projectId: row.project_id,
+    stage: row.stage,
     objective: row.objective,
     status: row.status,
     workerId: row.worker_id,
@@ -297,11 +313,12 @@ export class SqliteProductionRunStore implements ProductionRunStore {
     SqliteProjectRegistry.migrate(this.database);
   }
 
-  create(projectId: string, objective: string): ProductionRun {
+  create(projectId: string, objective: string, stage: ProductionStage = "intake"): ProductionRun {
     const now = new Date().toISOString();
     const run = productionRunSchema.parse({
       id: randomUUID(),
       projectId,
+      stage,
       objective,
       status: "ready",
       workerId: null,
@@ -312,11 +329,11 @@ export class SqliteProductionRunStore implements ProductionRunStore {
     this.database
       .prepare(
         `INSERT INTO production_runs
-          (id, project_id, objective, status, worker_id, error, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+          (id, project_id, stage, objective, status, worker_id, error, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
-      .run(run.id, run.projectId, run.objective, run.status, null, null, now, now);
-    this.append(run.id, "run.created", { objective });
+      .run(run.id, run.projectId, run.stage, run.objective, run.status, null, null, now, now);
+    this.append(run.id, "run.created", { objective, stage });
     return run;
   }
 
@@ -389,5 +406,31 @@ export class SqliteProductionRunStore implements ProductionRunStore {
     const run = this.get(id);
     if (!run) throw new Error(`生产批次无法重新读取：${id}`);
     return run;
+  }
+
+  approveAndCreateNext(id: string, nextObjective: string, nextStage: ProductionStage) {
+    return this.database.transaction(() => {
+      const run = this.get(id);
+      if (!run) throw new Error(`生产批次不存在：${id}`);
+      const approved = this.events(id).find((event) => event.type === "gate.approved");
+      const approvedNextRunId = approved?.payload.nextRunId;
+      if (typeof approvedNextRunId === "string") {
+        const existingNextRun = this.get(approvedNextRunId);
+        if (existingNextRun) return { completedRun: run, nextRun: existingNextRun };
+      }
+      if (run.status !== "waiting_approval" && run.status !== "succeeded") {
+        throw new Error("当前步骤尚未等待确认");
+      }
+
+      const completedRun =
+        run.status === "succeeded" ? run : this.transition(run.id, "succeeded");
+      const nextRun = this.create(run.projectId, nextObjective, nextStage);
+      this.append(run.id, "gate.approved", {
+        gate: "product_scope",
+        nextRunId: nextRun.id,
+        nextStage
+      });
+      return { completedRun, nextRun };
+    })();
   }
 }

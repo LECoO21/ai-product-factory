@@ -22,24 +22,8 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
               </span>
               <span>
                 <strong>AI 产品工厂</strong>
-                <small>Production OS</small>
               </span>
             </Link>
-            <nav className="topnav" aria-label="主要导航">
-              <Link href="/" className="nav-link active">
-                生产驾驶舱
-              </Link>
-              <Link href="/#projects" className="nav-link">
-                产品项目
-              </Link>
-              <span className="nav-link disabled" aria-disabled="true">
-                产物中心
-              </span>
-            </nav>
-            <div className="system-state">
-              <span className="state-dot" />
-              本地工厂在线
-            </div>
           </header>
           <main>{children}</main>
         </div>

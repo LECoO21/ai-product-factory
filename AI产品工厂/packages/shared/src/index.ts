@@ -97,11 +97,32 @@ export const productionEventSchema = z.object({
 
 export type ProductionEvent = z.infer<typeof productionEventSchema>;
 
+export const productionStageSchema = z.enum([
+  "intake",
+  "adaptation",
+  "stage-design",
+  "implementation",
+  "automated-quality",
+  "real-acceptance",
+  "release-preparation"
+]);
+
+export type ProductionStage = z.infer<typeof productionStageSchema>;
+
 export const productionRunSchema = z.object({
   id: z.string(),
   projectId: z.string(),
+  stage: productionStageSchema,
   objective: z.string(),
-  status: z.enum(["ready", "running", "blocked", "succeeded", "failed", "cancelled"]),
+  status: z.enum([
+    "ready",
+    "running",
+    "waiting_approval",
+    "blocked",
+    "succeeded",
+    "failed",
+    "cancelled"
+  ]),
   workerId: z.string().nullable(),
   error: z.string().nullable(),
   createdAt: z.string(),

@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { SqliteProductionRunStore } from "@factory/records";
 import { getProductFactory } from "@factory/production";
 import { RunConsole } from "@/components/run-console";
+import { stageLabels } from "@/lib/labels";
 
 export const dynamic = "force-dynamic";
 
@@ -20,9 +21,7 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
         <Link href={`/projects/${project.id}`} className="back-link">
           ← 返回 {project.name}
         </Link>
-        <span className="eyebrow">生产驾驶舱 / PRD 体检</span>
-        <h1>{run.objective}</h1>
-        <p>所有 Agent 与 Worker 事件都会先写入生产档案，再推送到这里。</p>
+        <h1>{stageLabels[run.stage]}</h1>
       </header>
       <RunConsole initialRun={run} initialEvents={store.events(run.id)} />
     </div>

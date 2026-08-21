@@ -59,7 +59,7 @@ textarea {
   z-index: 30;
   top: 0;
   display: grid;
-  grid-template-columns: minmax(210px, 1fr) auto minmax(210px, 1fr);
+  grid-template-columns: 1fr;
   align-items: center;
   min-height: 72px;
   padding: 12px clamp(20px, 4vw, 64px);
@@ -760,9 +760,8 @@ textarea {
 }
 
 .run-header h1 {
-  max-width: 920px;
-  margin: 0 0 16px;
-  font-size: clamp(42px, 6vw, 76px);
+  margin: 0;
+  font-size: clamp(34px, 4vw, 52px);
   letter-spacing: -0.055em;
   line-height: 1;
 }
@@ -778,9 +777,102 @@ textarea {
   gap: 18px;
 }
 
+.run-layout-simple {
+  grid-template-columns: 1fr;
+}
+
+.simple-progress {
+  margin-bottom: 18px;
+  overflow-x: auto;
+}
+
+.simple-progress-compact {
+  display: none;
+}
+
+.simple-progress ol {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(110px, 1fr));
+  min-width: 720px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.simple-progress li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 10px;
+  border-bottom: 2px solid var(--line);
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+
+.simple-progress li span {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--surface-muted);
+  font-size: 11px;
+}
+
+.simple-progress li.current {
+  border-color: var(--ink);
+  color: var(--ink);
+  font-weight: 750;
+}
+
+.simple-progress li.current span,
+.simple-progress li.done span {
+  background: var(--ink);
+  color: white;
+}
+
+.confirmation-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 18px;
+  padding: 24px;
+  border: 2px solid var(--ink);
+  border-radius: var(--radius-md);
+  background: var(--accent);
+}
+
+.confirmation-card h2 {
+  margin: 0;
+  font-size: clamp(22px, 3vw, 32px);
+}
+
+.confirmation-actions {
+  display: grid;
+  gap: 12px;
+  justify-items: end;
+}
+
+.confirmation-actions .form-error {
+  width: 100%;
+}
+
+.confirmation-complete {
+  background: var(--surface);
+}
+
 .run-output-panel,
 .event-panel {
-  min-height: 520px;
+  display: flex;
+  flex-direction: column;
+  height: clamp(520px, 68vh, 720px);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.run-layout-simple .run-output-panel {
+  height: clamp(420px, 58vh, 620px);
 }
 
 .run-panel-head {
@@ -825,10 +917,14 @@ textarea {
 }
 
 .agent-output {
-  min-height: 390px;
+  flex: 1;
+  min-height: 0;
   margin: 22px 0 0;
   padding: 0;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   color: #30332f;
   font-family: inherit;
   font-size: 15px;
@@ -836,9 +932,167 @@ textarea {
   white-space: pre-wrap;
 }
 
+.result-document {
+  white-space: normal;
+}
+
+.result-document h3 {
+  margin: 26px 0 10px;
+  font-size: 20px;
+}
+
+.result-document h3:first-child {
+  margin-top: 0;
+}
+
+.result-document p {
+  margin: 0 0 10px;
+}
+
+.result-bullet {
+  position: relative;
+  padding-left: 18px;
+}
+
+.result-bullet::before {
+  position: absolute;
+  left: 0;
+  content: "•";
+}
+
+.run-log-details,
+.prd-details {
+  margin-top: 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.run-log-details summary,
+.prd-details summary {
+  padding: 18px 22px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.run-log-details .event-list,
+.prd-details .prd-text {
+  max-height: 420px;
+  padding: 0 22px 22px;
+}
+
+.simple-page {
+  display: grid;
+  gap: 24px;
+}
+
+.simple-page-header,
+.simple-project-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.simple-page-header h1,
+.simple-project-header h1 {
+  margin: 0;
+  font-size: clamp(36px, 6vw, 64px);
+  letter-spacing: -0.055em;
+}
+
+.simple-project-header {
+  flex-wrap: wrap;
+}
+
+.simple-project-header .back-link {
+  width: 100%;
+  margin-bottom: 0;
+}
+
+.attention-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 24px;
+  border-radius: var(--radius-lg);
+  background: var(--accent);
+}
+
+.attention-card .primary-button {
+  flex: 0 0 auto;
+}
+
+.attention-card span,
+.attention-card strong {
+  display: block;
+  font-size: 12px;
+}
+
+.attention-card h2 {
+  margin: 6px 0;
+  font-size: 28px;
+}
+
+.simple-project-grid .project-card {
+  min-height: 190px;
+}
+
+.project-card-action {
+  margin-top: auto;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.empty-action {
+  display: grid;
+  min-height: 220px;
+  place-items: center;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-lg);
+  font-weight: 750;
+}
+
+.simple-run-list {
+  display: grid;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.simple-run-list a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 18px 22px;
+  border-top: 1px solid var(--line);
+}
+
+.simple-run-list a:first-child {
+  border-top: 0;
+}
+
+.simple-run-list span {
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.form-intro {
+  margin-bottom: 0;
+}
+
+.form-intro h1 {
+  margin-bottom: 0;
+  font-size: clamp(36px, 6vw, 64px);
+}
+
 .waiting-output {
   display: grid;
-  min-height: 390px;
+  flex: 1;
+  min-height: 0;
   place-items: center;
   align-content: center;
   gap: 18px;
@@ -872,9 +1126,15 @@ textarea {
 
 .event-list {
   display: grid;
+  flex: 1;
   gap: 0;
+  min-height: 0;
   margin: 0;
-  padding: 0;
+  padding: 0 10px 0 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   list-style: none;
 }
 
@@ -1669,6 +1929,55 @@ textarea {
   .page-narrow {
     width: min(100% - 28px, 1180px);
     padding: 44px 0 64px;
+  }
+
+  .simple-page-header,
+  .attention-card,
+  .confirmation-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .simple-page-header .primary-button,
+  .attention-card .primary-button,
+  .confirmation-card .primary-button,
+  .confirmation-actions {
+    width: 100%;
+  }
+
+  .simple-progress {
+    overflow: visible;
+  }
+
+  .simple-progress ol {
+    display: none;
+  }
+
+  .simple-progress-compact {
+    display: block;
+    padding: 14px 16px;
+    border-bottom: 2px solid var(--ink);
+    font-size: 13px;
+    font-weight: 750;
+  }
+
+  .confirmation-card {
+    gap: 18px;
+    padding: 20px;
+  }
+
+  .confirmation-actions {
+    justify-items: stretch;
+  }
+
+  .run-output-panel,
+  .run-layout-simple .run-output-panel {
+    height: min(620px, 64vh);
+    padding: 20px;
+  }
+
+  .simple-project-header h1 {
+    width: 100%;
   }
 
   .hero {

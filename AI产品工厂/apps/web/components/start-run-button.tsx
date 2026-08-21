@@ -29,7 +29,7 @@ export function StartRunButton({ projectId }: { projectId: string }) {
   return (
     <div className="start-run-control">
       <button className="primary-button" type="button" onClick={start} disabled={starting}>
-        {starting ? "正在创建批次…" : "启动 PRD 体检"}
+        {starting ? "正在开始…" : "开始分析"}
       </button>
       {error ? <p className="form-error">{error}</p> : null}
     </div>

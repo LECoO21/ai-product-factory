@@ -1,4 +1,9 @@
-import type { CapabilityPack, ProductProject, ProductionRun } from "@factory/shared";
+import type {
+  CapabilityPack,
+  ProductProject,
+  ProductionRun,
+  ProductionStage
+} from "@factory/shared";
 
 export const capabilityLabels: Record<CapabilityPack, string> = {
   "web-interface": "Web 界面",
@@ -22,12 +27,23 @@ export const statusLabels: Record<ProductProject["status"], string> = {
 };
 
 export const runStatusLabels: Record<ProductionRun["status"], string> = {
-  ready: "等待 Worker",
-  running: "正在执行",
+  ready: "等待开始",
+  running: "AI 正在处理",
+  waiting_approval: "等你确认",
   blocked: "等待配置",
-  succeeded: "执行完成",
-  failed: "执行失败",
+  succeeded: "这一步已完成",
+  failed: "这一步失败",
   cancelled: "已取消"
+};
+
+export const stageLabels: Record<ProductionStage, string> = {
+  intake: "理解产品",
+  adaptation: "确定技术方案",
+  "stage-design": "生成开发计划",
+  implementation: "制作产品",
+  "automated-quality": "自动检查",
+  "real-acceptance": "测试验收",
+  "release-preparation": "准备发布"
 };
 
 export const valueLabels: Record<string, string> = {

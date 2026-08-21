@@ -2,7 +2,7 @@ import { SqliteProductionRunStore } from "@factory/records";
 
 export const dynamic = "force-dynamic";
 
-const terminal = new Set(["blocked", "succeeded", "failed", "cancelled"]);
+const terminal = new Set(["waiting_approval", "blocked", "succeeded", "failed", "cancelled"]);
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

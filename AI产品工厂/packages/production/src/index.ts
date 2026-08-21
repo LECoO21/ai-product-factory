@@ -1,11 +1,16 @@
 import { randomUUID } from "node:crypto";
 import { RuleBasedBlueprintCompiler, type BlueprintCompiler } from "@factory/blueprints";
-import { SqliteProjectRegistry, type ProjectRegistry } from "@factory/records";
+import {
+  SqliteProjectRegistry,
+  type ProductionRunStore,
+  type ProjectRegistry
+} from "@factory/records";
 import {
   projectCreateInputSchema,
   type ProductProject,
   type ProjectCreateInput,
-  type ProjectSummary
+  type ProjectSummary,
+  type ProductionStage
 } from "@factory/shared";
 
 export interface ProductFactory {
@@ -74,3 +79,31 @@ export const createProductFactory = (
   projects: ProjectRegistry,
   blueprints: BlueprintCompiler = new RuleBasedBlueprintCompiler()
 ) => new LocalProductFactory(projects, blueprints);
+
+const nextPlanningStage: Partial<
+  Record<ProductionStage, { stage: ProductionStage; objective: string }>
+> = {
+  intake: {
+    stage: "adaptation",
+    objective: "根据已确认的产品理解生成技术适配声明"
+  },
+  adaptation: {
+    stage: "stage-design",
+    objective: "根据已确认的技术方案生成第一阶段开发计划"
+  }
+};
+
+export class ProductionController {
+  constructor(private readonly runs: ProductionRunStore) {}
+
+  approveAndContinue(runId: string) {
+    const run = this.runs.get(runId);
+    if (!run) throw new Error("生产步骤不存在");
+    const next = nextPlanningStage[run.stage];
+    if (!next) throw new Error("当前步骤之后的生产能力尚未开放");
+    return this.runs.approveAndCreateNext(run.id, next.objective, next.stage);
+  }
+}
+
+export const createProductionController = (runs: ProductionRunStore) =>
+  new ProductionController(runs);

@@ -1,27 +1,75 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { ProductionRun, RunEvent } from "@factory/shared";
+import { useRouter } from "next/navigation";
+import type { ProductionRun, ProductionStage, RunEvent } from "@factory/shared";
 import { runStatusLabels } from "@/lib/labels";
 
 const eventLabels: Record<string, string> = {
-  "run.created": "生产批次已创建",
-  "run.claimed": "本机 Worker 已领取",
-  "agent.started": "Pi Agent 已启动",
-  "turn.started": "DeepSeek 开始推理",
-  "text.delta": "模型输出",
-  "tool.started": "工具开始执行",
-  "tool.completed": "工具执行结束",
-  "agent.completed": "Pi Agent 已完成",
-  "agent.failed": "Agent 运行受阻",
-  "run.blocked": "生产批次等待配置",
-  "run.succeeded": "生产批次完成",
-  "run.failed": "生产批次失败"
+  "run.created": "任务已创建",
+  "run.claimed": "开始处理",
+  "agent.started": "AI 已开始",
+  "turn.started": "AI 正在思考",
+  "text.delta": "AI 输出",
+  "tool.started": "开始执行",
+  "tool.completed": "执行完成",
+  "agent.completed": "AI 已完成",
+  "agent.failed": "AI 处理失败",
+  "run.blocked": "等待配置",
+  "run.succeeded": "这一步已完成",
+  "run.failed": "这一步失败",
+  "run.waiting_approval": "等待你的确认",
+  "gate.requested": "需要你确认",
+  "gate.approved": "你已确认，进入下一步"
 };
 
+const simpleStages: Array<{ ids: ProductionStage[]; label: string }> = [
+  { ids: ["intake"], label: "理解产品" },
+  { ids: ["adaptation"], label: "确定方案" },
+  { ids: ["stage-design"], label: "开发计划" },
+  { ids: ["implementation"], label: "制作产品" },
+  { ids: ["automated-quality", "real-acceptance"], label: "测试验收" },
+  { ids: ["release-preparation"], label: "准备发布" }
+];
+
+const nextActions: Partial<
+  Record<ProductionStage, { title: string; button: string }>
+> = {
+  intake: {
+    title: "请确认 AI 对产品的理解",
+    button: "确认理解，进入技术方案"
+  },
+  adaptation: {
+    title: "请确认推荐的技术方案",
+    button: "确认方案，生成开发计划"
+  }
+};
+
+const cleanInline = (text: string) =>
+  text.replace(/\*\*(.*?)\*\*/g, "$1").replace(/`([^`]+)`/g, "$1").trim();
+
+function ResultDocument({ output }: { output: string }) {
+  return (
+    <div className="agent-output result-document">
+      {output.split("\n").map((line, index) => {
+        const value = line.trim();
+        if (!value || /^---+$/.test(value)) return null;
+        const heading = value.match(/^#{1,6}\s+(.*)$/);
+        if (heading) return <h3 key={index}>{cleanInline(heading[1] ?? "")}</h3>;
+        const bullet = value.match(/^[-*]\s+(.*)$/);
+        if (bullet) return <p className="result-bullet" key={index}>{cleanInline(bullet[1] ?? "")}</p>;
+        return <p key={index}>{cleanInline(value)}</p>;
+      })}
+    </div>
+  );
+}
+
 export function RunConsole({ initialRun, initialEvents }: { initialRun: ProductionRun; initialEvents: RunEvent[] }) {
+  const router = useRouter();
   const [run, setRun] = useState(initialRun);
   const [events, setEvents] = useState(initialEvents);
+  const [approving, setApproving] = useState(false);
+  const [approvalError, setApprovalError] = useState<string | null>(null);
 
   useEffect(() => {
     const source = new EventSource(`/api/runs/${run.id}/events`);
@@ -46,40 +94,113 @@ export function RunConsole({ initialRun, initialEvents }: { initialRun: Producti
     () => events.filter((event) => event.type === "text.delta").map((event) => String(event.payload.delta ?? "")).join(""),
     [events]
   );
+  const visibleEvents = useMemo(
+    () =>
+      events
+        .filter(
+          (event, index) =>
+            event.type !== "text.delta" || events[index + 1]?.type !== "text.delta"
+        )
+        .slice(-20),
+    [events]
+  );
+  const currentStageIndex = simpleStages.findIndex((stage) => stage.ids.includes(run.stage));
+  const approvedEvent = events.find((event) => event.type === "gate.approved");
+  const nextRunId = approvedEvent?.payload.nextRunId;
+  const nextAction = nextActions[run.stage];
+  const canApprove =
+    Boolean(nextAction) &&
+    !approvedEvent &&
+    (run.status === "waiting_approval" || run.status === "succeeded");
+
+  async function approve() {
+    setApproving(true);
+    setApprovalError(null);
+    try {
+      const response = await fetch(`/api/runs/${run.id}/approve`, { method: "POST" });
+      const result = (await response.json()) as { nextRun?: ProductionRun; error?: string };
+      if (!response.ok || !result.nextRun) throw new Error(result.error ?? "无法进入下一步");
+      router.push(`/runs/${result.nextRun.id}`);
+    } catch (error) {
+      setApprovalError(error instanceof Error ? error.message : "无法进入下一步");
+      setApproving(false);
+    }
+  }
 
   return (
-    <div className="run-layout">
-      <section className="panel run-output-panel">
-        <div className="run-panel-head">
+    <>
+      <section className="simple-progress" aria-label="产品生产进度">
+        <div className="simple-progress-compact">
+          第 {currentStageIndex + 1} / {simpleStages.length} 步 · {simpleStages[currentStageIndex]?.label}
+        </div>
+        <ol>
+          {simpleStages.map((stage, index) => (
+            <li
+              className={index < currentStageIndex ? "done" : index === currentStageIndex ? "current" : ""}
+              key={stage.label}
+            >
+              <span>{index < currentStageIndex ? "✓" : index + 1}</span>
+              {stage.label}
+            </li>
+          ))}
+        </ol>
+      </section>
+
+      {canApprove && nextAction ? (
+        <section className="confirmation-card" aria-labelledby="confirmation-title">
           <div>
-            <span className="eyebrow">Live Agent Output</span>
-            <h2>{runStatusLabels[run.status]}</h2>
+            <h2 id="confirmation-title">{nextAction.title}</h2>
           </div>
-          <span className={`run-status run-status-${run.status}`}>{run.status}</span>
+          <div className="confirmation-actions">
+            <button className="primary-button" type="button" onClick={approve} disabled={approving}>
+              {approving ? "正在进入下一步…" : nextAction.button}
+            </button>
+            {approvalError ? <p className="form-error">{approvalError}</p> : null}
+          </div>
+        </section>
+      ) : null}
+
+      {typeof nextRunId === "string" ? (
+        <section className="confirmation-card confirmation-complete">
+          <h2>已确认</h2>
+          <button className="primary-button" type="button" onClick={() => router.push(`/runs/${nextRunId}`)}>
+            查看下一步
+          </button>
+        </section>
+      ) : null}
+
+      <div className="run-layout run-layout-simple" id="ai-result">
+        <section className="panel run-output-panel">
+        <div className="run-panel-head">
+          <h2>AI 结果</h2>
+          <span className={`run-status run-status-${run.status}`}>{runStatusLabels[run.status]}</span>
         </div>
         {output ? (
-          <pre className="agent-output">{output}</pre>
+          <ResultDocument output={output} />
         ) : (
           <div className="waiting-output">
             <span className="waiting-pulse" />
             <p>
               {run.status === "blocked"
                 ? run.error
-                : "生产单已进入持久化队列，正在等待 Worker 或 Agent 事件。"}
+                : run.status === "ready"
+                  ? "等待 AI 开始。"
+                  : "AI 正在处理，请稍候。"}
             </p>
           </div>
         )}
-      </section>
+        </section>
 
-      <aside className="panel event-panel">
-        <h2>生产事件</h2>
+      </div>
+
+      <details className="run-log-details">
+        <summary>运行记录</summary>
         <ol className="event-list">
-          {events.map((event) => (
+          {visibleEvents.map((event) => (
             <li key={event.sequence}>
               <span className="event-dot" />
               <div>
                 <strong>{eventLabels[event.type] ?? event.type}</strong>
-                <small>#{event.sequence}</small>
                 {event.type === "agent.failed" ? (
                   <p>{String(event.payload.message ?? "执行失败")}</p>
                 ) : null}
@@ -87,7 +208,7 @@ export function RunConsole({ initialRun, initialEvents }: { initialRun: Producti
             </li>
           ))}
         </ol>
-      </aside>
-    </div>
+      </details>
+    </>
   );
 }
