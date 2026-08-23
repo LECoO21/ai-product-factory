@@ -7,6 +7,7 @@ import {
 } from "@factory/records";
 import {
   projectCreateInputSchema,
+  getProductPrototype,
   hasConfirmableAgentResult,
   type ProductProject,
   type ProjectCreateInput,
@@ -91,6 +92,10 @@ const nextPlanningStage: Partial<
   adaptation: {
     stage: "stage-design",
     objective: "根据已确认的技术方案生成第一阶段开发计划"
+  },
+  "stage-design": {
+    stage: "implementation",
+    objective: "根据已确认的开发计划和产品基础稿制作第一版可运行产品"
   }
 };
 
@@ -102,8 +107,12 @@ export class ProductionController {
   approveAndContinue(runId: string) {
     const run = this.runs.get(runId);
     if (!run) throw new Error("生产步骤不存在");
-    if (!hasConfirmableAgentResult(this.runs.events(run.id))) {
+    const events = this.runs.events(run.id);
+    if (!hasConfirmableAgentResult(events)) {
       throw new Error("AI 结果尚未生成，不能确认");
+    }
+    if (run.stage === "stage-design" && !getProductPrototype(events)) {
+      throw new Error("当前产品基础 HTML 尚未生成，不能进入制作产品");
     }
     const next = nextPlanningStage[run.stage];
     if (!next) throw new Error("当前步骤之后的生产能力尚未开放");

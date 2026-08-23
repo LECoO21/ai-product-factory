@@ -1,6 +1,6 @@
 # AI 产品工厂
 
-> 版本：V0.2 PRD、G2 技术适配、G3 领域骨架与 G4 组件选型已确认，G5 产品方案待确认
+> 版本：V0.2 PRD 与 G2–G5 已确认，当前进入 G6“最小可执行 Harness”阶段文档确认
 > 当前定位：供产品负责人本人使用的本地优先对话式 Web 控制台，以 Pi Agent + DeepSeek 为驾驶者，以受控 Agent Harness 为执行载具，把不同类型数字产品从 PRD 生产到发布候选。
 
 这里的“AI 产品工厂”指由 AI 驱动生产，不要求被生产的产品本身一定包含 AI。小游戏只是第一台试产样机，不是工厂的默认产品类型。
@@ -40,6 +40,9 @@
 16. [Harness 五要素领域骨架](./docs/14-AI产品工厂-Harness五要素领域骨架.md)
 17. [Agent Blueprint 组件选型表](./docs/15-AI产品工厂-Agent-Blueprint组件选型表.md)
 18. [七层架构与产品生产蓝图](./docs/16-AI产品工厂-七层架构与产品生产蓝图.md)
+19. [第一阶段技术开发文档：最小可执行 Harness](./docs/17-第一阶段技术开发文档-最小可执行Harness.md)
+20. [第一阶段生产单：最小可执行 Harness](./docs/18-第一阶段生产单-最小可执行Harness.md)
+21. [第一阶段完成目标：最小可执行 Harness](./docs/19-第一阶段完成目标-最小可执行Harness.md)
 
 ## 一句话流程
 
@@ -81,7 +84,7 @@
 
 当前还不能声称完整产品生产线已完成：受控文件写入、Shell、检查点恢复、自动测试证据采集和真实产品生产属于后续里程碑。里程碑 2 也尚待补齐暂停、补充指令、继续、终止和用量摘要。
 
-根据 Agent Blueprint 的 V0.2 方向调整已经形成待确认方案：现有 Worker 仍是一张生产单对应一次模型生成，下一阶段不再继续堆叠一次性聊天工位，而是优先建设 Agent Loop、工具注册表、Hooks、权限、持久任务、Workflow journal、后台任务和 Goal Gate。方案确认前不改写这部分执行代码。
+Agent Blueprint 的 V0.2 产品方案已经通过 G5：现有 Worker 仍是一张生产单对应一次模型生成，下一阶段先建设最小可执行 Harness，包括单一 Agent Loop、ToolGateway、Hooks、权限、手册权威加载、持久任务、后台任务、WorkPlan、产物与证据登记。完整 Workflow journal/checkpoint 与 Goal Gate 留在 V0.2-C；G6 阶段文档确认前不改写生产代码。
 
 ## 本地运行
 

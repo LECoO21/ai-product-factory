@@ -87,6 +87,31 @@ describe("ProductionController", () => {
     expect(runs.events(adaptation.id).map((event) => event.type)).toContain("gate.approved");
   });
 
+  it("continues from an approved development plan to exactly one implementation run", () => {
+    const directory = mkdtempSync(join(tmpdir(), "factory-workflow-"));
+    const databasePath = join(directory, "factory.sqlite");
+    const project = createProject(databasePath);
+    const runs = new SqliteProductionRunStore(databasePath);
+    const stageDesign = runs.create(project.id, "生成第一阶段开发计划", "stage-design");
+    appendConfirmableResult(runs, stageDesign.id);
+    runs.append(stageDesign.id, "artifact.created", {
+      kind: "product-prototype-html",
+      title: "当前产品基础 HTML",
+      href: "/previews/product-v0.html"
+    });
+    runs.transition(stageDesign.id, "waiting_approval");
+    const controller = createProductionController(runs);
+
+    const first = controller.approveAndContinue(stageDesign.id);
+    const repeated = controller.approveAndContinue(stageDesign.id);
+
+    expect(first.completedRun.status).toBe("succeeded");
+    expect(first.nextRun.stage).toBe("implementation");
+    expect(first.nextRun.status).toBe("ready");
+    expect(repeated.nextRun.id).toBe(first.nextRun.id);
+    expect(runs.listForProject(project.id)).toHaveLength(2);
+  });
+
   it("rejects approval when an Agent completed without producing a result", () => {
     const directory = mkdtempSync(join(tmpdir(), "factory-workflow-"));
     const databasePath = join(directory, "factory.sqlite");

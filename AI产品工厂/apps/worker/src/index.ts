@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { PiAgentRuntime } from "@factory/agent-runtime";
 import { SqliteProductionRunStore, SqliteProjectRegistry } from "@factory/records";
 import {
+  extractProductPrototypeHtml,
   hasConfirmableAgentResult,
   type AgentRuntimeEvent,
   type ProductProject,
@@ -33,7 +34,7 @@ const manualContext = manualPaths.every(existsSync)
   : null;
 
 const stationInstructions: Record<
-  Extract<ProductionStage, "intake" | "adaptation" | "stage-design">,
+  Extract<ProductionStage, "intake" | "adaptation" | "stage-design" | "implementation">,
   { systemPrompt: string; outputRequest: string }
 > = {
   intake: {
@@ -49,9 +50,15 @@ const stationInstructions: Record<
   },
   "stage-design": {
     systemPrompt:
-      "你是 AI 产品工厂的阶段设计工位。严格遵守随任务提供的三份原始手册，只设计当前第一阶段，输出非技术人员也能照着验收的开发计划。",
+      "你是 AI 产品工厂的阶段设计工位。严格遵守随任务提供的三份原始手册，只设计当前第一阶段，输出非技术人员也能照着验收的开发计划，并同时制作当前产品自己的可交互基础 HTML。基础 HTML 是产品方向原型，不得做成产品工厂流程说明页。",
     outputRequest:
-      "请生成第一阶段开发计划，包含目标、范围、主链路、状态、接口、测试、验收清单、风险和明确不做。"
+      "请生成第一阶段开发计划，包含目标、范围、主链路、状态、接口、测试、验收清单、风险和明确不做。文档末尾必须依次输出 <!-- PRODUCT_PROTOTYPE_START -->、完整且无需外部依赖的单文件 HTML、<!-- PRODUCT_PROTOTYPE_END -->。HTML 必须体现当前产品的核心输入、操作、成功、失败和空状态，可直接点击验收；清楚标注为基础稿，不得调用真实付费服务或伪造真实数据。"
+  },
+  implementation: {
+    systemPrompt:
+      "你是 AI 产品工厂的制作产品工位。严格遵守随任务提供的三份原始手册、已确认开发计划和产品基础稿，制作当前第一阶段的可运行产品。只制作当前产品，不得输出产品工厂自己的流程演示。",
+    outputRequest:
+      "请先简洁说明本次制作完成的功能、用户可见状态、限制和验收方法。文档末尾必须依次输出 <!-- PRODUCT_PROTOTYPE_START -->、完整且无需外部依赖的单文件 HTML、<!-- PRODUCT_PROTOTYPE_END -->。HTML 必须是当前产品的第一版可运行结果，覆盖核心输入、操作、加载、成功、失败和空状态；不得外连资源、不得泄露密钥、不得把示例数据冒充真实服务。"
   }
 };
 
@@ -123,6 +130,33 @@ async function executeNext() {
   }
 
   if (completed && hasConfirmableAgentResult(executionEvents)) {
+    if (run.stage === "stage-design" || run.stage === "implementation") {
+      const output = executionEvents
+        .filter((event) => event.type === "text.delta")
+        .map((event) => String(event.payload.delta ?? ""))
+        .join("");
+      const prototypeHtml = extractProductPrototypeHtml(output);
+      if (!prototypeHtml) {
+        runs.transition(
+          run.id,
+          "failed",
+          run.stage === "stage-design"
+            ? "开发计划缺少当前产品的基础 HTML，请重新生成"
+            : "制作结果缺少当前产品的可运行 HTML，请重新制作"
+        );
+        return true;
+      }
+      runs.append(run.id, "artifact.created", {
+        kind: "product-prototype-html",
+        title:
+          run.stage === "stage-design"
+            ? `${project.name}｜基础 HTML`
+            : `${project.name}｜第一版产品`,
+        mediaType: "text/html",
+        href: `/api/runs/${run.id}/prototype`,
+        content: prototypeHtml
+      });
+    }
     runs.append(run.id, "gate.requested", { gate: "product_scope", stage: run.stage });
     runs.transition(run.id, "waiting_approval");
   } else if (completed) runs.transition(run.id, "failed", "AI 未生成可确认结果，请重新分析");

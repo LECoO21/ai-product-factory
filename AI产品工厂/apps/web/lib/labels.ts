@@ -36,6 +36,21 @@ export const runStatusLabels: Record<ProductionRun["status"], string> = {
   cancelled: "已取消"
 };
 
+const waitingApprovalLabels: Partial<Record<ProductionStage, string>> = {
+  intake: "产品理解待确认",
+  adaptation: "技术方案待确认",
+  "stage-design": "开发计划待确认",
+  implementation: "制作结果待确认",
+  "automated-quality": "自动检查待确认",
+  "real-acceptance": "验收结果待确认",
+  "release-preparation": "发布方案待确认"
+};
+
+export const getRunStatusLabel = (run: Pick<ProductionRun, "stage" | "status">) =>
+  run.status === "waiting_approval"
+    ? waitingApprovalLabels[run.stage] ?? runStatusLabels[run.status]
+    : runStatusLabels[run.status];
+
 export const stageLabels: Record<ProductionStage, string> = {
   intake: "理解产品",
   adaptation: "确定技术方案",

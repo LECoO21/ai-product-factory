@@ -1,5 +1,14 @@
 import { z } from "zod";
 
+export {
+  PRODUCT_PROTOTYPE_END,
+  PRODUCT_PROTOTYPE_START,
+  extractProductPrototypeHtml,
+  getProductPrototype,
+  stripProductPrototype,
+  type ProductPrototype
+} from "./product-prototype";
+
 export const capabilityPackSchema = z.enum([
   "web-interface",
   "agent-runtime",

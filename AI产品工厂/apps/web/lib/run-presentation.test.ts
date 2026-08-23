@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
-import type { ProductionRun } from "@factory/shared";
-import { getEmptyRunPresentation } from "./run-presentation";
+import type { ProductionRun, RunEvent } from "@factory/shared";
+import {
+  getEmptyRunPresentation,
+  getProductPrototype,
+  getStageReviewGuidance,
+  stripProductPrototype
+} from "./run-presentation";
+import { getRunStatusLabel } from "./labels";
 
 const run = (status: ProductionRun["status"], error: string | null = null): ProductionRun => ({
   id: "run-1",
@@ -31,5 +37,70 @@ describe("getEmptyRunPresentation", () => {
   it("shows elapsed time only while a run is ready or running", () => {
     expect(getEmptyRunPresentation(run("ready"), false, "12 秒").message).toContain("12 秒");
     expect(getEmptyRunPresentation(run("running"), false, "18 秒").message).toContain("18 秒");
+  });
+});
+
+describe("getStageReviewGuidance", () => {
+  it("binds stage-design review to the current product prototype", () => {
+    const guidance = getStageReviewGuidance("stage-design", "/previews/takeout-v0.html");
+
+    expect(guidance).toEqual({
+      eyebrow: "开发计划与基础稿验收",
+      title: "先检查下面的开发计划，再试用当前产品的基础 HTML",
+      description: "开发计划和基础稿都符合预期后，再确认进入正式制作。",
+      previewHref: "/previews/takeout-v0.html",
+      previewLabel: "查看基础 HTML"
+    });
+  });
+
+  it("does not show a review link without a product prototype", () => {
+    expect(getStageReviewGuidance("stage-design", null)).toBeNull();
+    expect(getStageReviewGuidance("intake", "/preview.html")).toBeNull();
+  });
+});
+
+describe("product prototype artifacts", () => {
+  const event = (payload: RunEvent["payload"]): RunEvent => ({
+    sequence: 1,
+    id: "event-1",
+    runId: "run-1",
+    type: "artifact.created",
+    payload,
+    occurredAt: "2026-08-23T00:00:00.000Z"
+  });
+
+  it("reads the current product HTML artifact instead of a factory demo", () => {
+    expect(
+      getProductPrototype([
+        event({
+          kind: "product-prototype-html",
+          title: "外卖推荐基础稿",
+          href: "/previews/takeout-v0.html"
+        })
+      ])
+    ).toEqual({ title: "外卖推荐基础稿", href: "/previews/takeout-v0.html" });
+  });
+
+  it("ignores unrelated artifacts", () => {
+    expect(getProductPrototype([event({ kind: "test-report", href: "/report.html" })])).toBeNull();
+  });
+
+  it("removes the embedded prototype source from the visible development plan", () => {
+    const output = [
+      "# 第一阶段开发计划",
+      "<!-- PRODUCT_PROTOTYPE_START -->",
+      "<!doctype html><html><body>prototype</body></html>",
+      "<!-- PRODUCT_PROTOTYPE_END -->"
+    ].join("\n");
+
+    expect(stripProductPrototype(output)).toBe("# 第一阶段开发计划");
+  });
+});
+
+describe("getRunStatusLabel", () => {
+  it("names the exact object waiting for approval", () => {
+    expect(getRunStatusLabel({ stage: "stage-design", status: "waiting_approval" })).toBe(
+      "开发计划待确认"
+    );
   });
 });

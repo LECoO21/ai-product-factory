@@ -1,0 +1,483 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'"
+    />
+    <title>今天吃什么外卖｜产品基础稿</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --paper: #f4f1ea;
+        --card: #fffdf8;
+        --ink: #171713;
+        --muted: #737067;
+        --line: #d9d4c8;
+        --accent: #ff5a36;
+        --accent-dark: #d63b1d;
+        --success: #177a50;
+        --danger: #c7352c;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background:
+          radial-gradient(circle at 80% 0%, rgba(255, 90, 54, 0.16), transparent 33rem),
+          var(--paper);
+        color: var(--ink);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif;
+      }
+
+      button, input, textarea { font: inherit; }
+
+      .shell {
+        width: min(1120px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 28px 0 52px;
+      }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding-bottom: 28px;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-weight: 750;
+        letter-spacing: -0.02em;
+      }
+
+      .brand-mark {
+        display: grid;
+        width: 38px;
+        height: 38px;
+        place-items: center;
+        border-radius: 50%;
+        background: var(--ink);
+        color: white;
+        font-size: 20px;
+      }
+
+      .draft-badge {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: rgba(255, 253, 248, 0.72);
+        padding: 8px 12px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .hero {
+        max-width: 790px;
+        padding: 56px 0 42px;
+      }
+
+      .eyebrow {
+        margin: 0 0 14px;
+        color: var(--accent-dark);
+        font-size: 14px;
+        font-weight: 760;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        margin: 0;
+        font-family: Georgia, "Songti SC", serif;
+        font-size: clamp(48px, 8vw, 94px);
+        font-weight: 500;
+        letter-spacing: -0.07em;
+        line-height: 0.98;
+      }
+
+      .hero-copy {
+        max-width: 620px;
+        margin: 24px 0 0;
+        color: var(--muted);
+        font-size: 18px;
+        line-height: 1.75;
+      }
+
+      .workspace {
+        display: grid;
+        grid-template-columns: minmax(0, 1.08fr) minmax(320px, 0.92fr);
+        gap: 20px;
+        align-items: stretch;
+      }
+
+      .panel {
+        border: 1px solid var(--line);
+        border-radius: 24px;
+        background: var(--card);
+        box-shadow: 0 16px 44px rgba(43, 38, 28, 0.06);
+      }
+
+      .form-panel { padding: 28px; }
+
+      .panel-heading {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 24px;
+      }
+
+      h2 {
+        margin: 0;
+        font-family: Georgia, "Songti SC", serif;
+        font-size: 30px;
+        font-weight: 500;
+      }
+
+      .step {
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .field { display: block; margin-top: 18px; }
+
+      .field-label {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 8px;
+        font-size: 14px;
+        font-weight: 680;
+      }
+
+      .optional {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 500;
+      }
+
+      textarea, input {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 13px;
+        outline: none;
+        background: #fff;
+        color: var(--ink);
+        transition: border-color 160ms ease, box-shadow 160ms ease;
+      }
+
+      textarea {
+        min-height: 88px;
+        resize: vertical;
+        padding: 13px 14px;
+        line-height: 1.55;
+      }
+
+      input { height: 48px; padding: 0 14px; }
+
+      textarea:focus, input:focus {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px rgba(255, 90, 54, 0.13);
+      }
+
+      .budget-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+      }
+
+      .primary {
+        width: 100%;
+        min-height: 54px;
+        margin-top: 24px;
+        border: 0;
+        border-radius: 14px;
+        background: var(--ink);
+        color: white;
+        cursor: pointer;
+        font-weight: 720;
+        transition: transform 150ms ease, background 150ms ease;
+      }
+
+      .primary:hover { background: var(--accent-dark); transform: translateY(-1px); }
+      .primary:disabled { cursor: wait; opacity: 0.65; transform: none; }
+
+      .error {
+        min-height: 22px;
+        margin: 10px 0 0;
+        color: var(--danger);
+        font-size: 13px;
+      }
+
+      .result-panel {
+        position: relative;
+        display: flex;
+        min-height: 560px;
+        overflow: hidden;
+        background: var(--ink);
+        color: white;
+      }
+
+      .result-panel::after {
+        position: absolute;
+        right: -70px;
+        bottom: -95px;
+        width: 270px;
+        height: 270px;
+        border: 56px solid var(--accent);
+        border-radius: 50%;
+        content: "";
+        opacity: 0.85;
+      }
+
+      .state {
+        position: relative;
+        z-index: 1;
+        display: none;
+        width: 100%;
+        padding: 34px;
+      }
+
+      .state.active { display: flex; flex-direction: column; }
+
+      .empty { justify-content: space-between; }
+
+      .empty-mark {
+        align-self: flex-end;
+        color: rgba(255, 255, 255, 0.16);
+        font-family: Georgia, serif;
+        font-size: 132px;
+        line-height: 0.8;
+      }
+
+      .state-kicker {
+        margin: 0 0 12px;
+        color: #ff9b83;
+        font-size: 13px;
+        font-weight: 750;
+        letter-spacing: 0.12em;
+      }
+
+      .state h2 { max-width: 380px; font-size: 38px; line-height: 1.18; }
+      .state-copy { max-width: 360px; color: #bbb9b3; line-height: 1.7; }
+
+      .loading { justify-content: center; align-items: center; text-align: center; }
+
+      .spinner {
+        width: 48px;
+        height: 48px;
+        margin-bottom: 22px;
+        border: 3px solid rgba(255, 255, 255, 0.2);
+        border-top-color: var(--accent);
+        border-radius: 50%;
+        animation: spin 700ms linear infinite;
+      }
+
+      @keyframes spin { to { transform: rotate(360deg); } }
+
+      .success { justify-content: space-between; }
+
+      .dish {
+        margin: 10px 0 18px;
+        font-family: Georgia, "Songti SC", serif;
+        font-size: clamp(42px, 6vw, 68px);
+        font-weight: 500;
+        letter-spacing: -0.045em;
+        line-height: 1.05;
+      }
+
+      .reason {
+        max-width: 430px;
+        margin: 0;
+        color: #d5d2ca;
+        font-size: 16px;
+        line-height: 1.75;
+      }
+
+      .result-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 28px;
+      }
+
+      .result-meta span {
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 999px;
+        padding: 7px 10px;
+        color: #d5d2ca;
+        font-size: 12px;
+      }
+
+      .notice {
+        margin: 18px 0 0;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.65;
+      }
+
+      @media (max-width: 780px) {
+        .shell { width: min(100% - 22px, 620px); padding-top: 18px; }
+        .hero { padding: 34px 4px 30px; }
+        .hero-copy { font-size: 16px; }
+        .workspace { grid-template-columns: 1fr; }
+        .form-panel, .state { padding: 22px; }
+        .result-panel { min-height: 440px; }
+        .budget-grid { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div class="brand"><span class="brand-mark">吃</span><span>今天吃什么</span></div>
+        <span class="draft-badge">V0 基础稿 · 只用于方向验收</span>
+      </header>
+
+      <section class="hero">
+        <p class="eyebrow">Takeout picker</p>
+        <h1>别想了，<br />今天就吃这个。</h1>
+        <p class="hero-copy">告诉我你现在的口味、忌口和预算，我先给你一个具体选择。这个基础稿用于确认产品主流程与信息结构。</p>
+      </section>
+
+      <section class="workspace" aria-label="外卖推荐基础稿">
+        <form class="panel form-panel" id="recommendation-form" novalidate>
+          <div class="panel-heading">
+            <h2>说说你的要求</h2>
+            <span class="step">01 / 02</span>
+          </div>
+
+          <label class="field">
+            <span class="field-label">现在想吃什么感觉？ <span class="optional">选填</span></span>
+            <textarea id="taste" maxlength="100" placeholder="例如：想吃辣的、热乎的，不要太油"></textarea>
+          </label>
+
+          <label class="field">
+            <span class="field-label">有什么忌口？ <span class="optional">选填</span></span>
+            <textarea id="dislikes" maxlength="200" placeholder="例如：不要香菜、不要羊肉"></textarea>
+          </label>
+
+          <div class="budget-grid">
+            <label class="field">
+              <span class="field-label">最低预算 <span class="optional">元</span></span>
+              <input id="budget-min" type="number" min="0" step="1" inputmode="numeric" placeholder="20" />
+            </label>
+            <label class="field">
+              <span class="field-label">最高预算 <span class="optional">元</span></span>
+              <input id="budget-max" type="number" min="0" step="1" inputmode="numeric" placeholder="40" />
+            </label>
+          </div>
+
+          <button class="primary" id="submit" type="submit">帮我推荐一个外卖</button>
+          <p class="error" id="error" role="alert" aria-live="polite"></p>
+          <p class="notice">基础稿暂时使用本地示例推荐，不调用 DeepSeek，也不代表真实店铺、价格或配送信息。</p>
+        </form>
+
+        <section class="panel result-panel" aria-live="polite">
+          <div class="state empty active" data-state="empty">
+            <div>
+              <p class="state-kicker">等待你的偏好</p>
+              <h2>填完左边，答案会出现在这里。</h2>
+              <p class="state-copy">所有内容都可以不填。没有偏好时，我们会先给一个接受度较高的选择。</p>
+            </div>
+            <span class="empty-mark">?</span>
+          </div>
+
+          <div class="state loading" data-state="loading">
+            <span class="spinner" aria-hidden="true"></span>
+            <h2>正在替你做决定…</h2>
+          </div>
+
+          <div class="state success" data-state="success">
+            <div>
+              <p class="state-kicker">今天推荐</p>
+              <h2 class="dish" id="dish">麻辣香锅单人套餐</h2>
+              <p class="reason" id="reason"></p>
+              <div class="result-meta" id="result-meta"></div>
+            </div>
+            <p class="state-copy">不满意？修改左侧条件，再推荐一次。</p>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <script>
+      const form = document.querySelector('#recommendation-form');
+      const submit = document.querySelector('#submit');
+      const error = document.querySelector('#error');
+      const taste = document.querySelector('#taste');
+      const dislikes = document.querySelector('#dislikes');
+      const budgetMin = document.querySelector('#budget-min');
+      const budgetMax = document.querySelector('#budget-max');
+      const dish = document.querySelector('#dish');
+      const reason = document.querySelector('#reason');
+      const resultMeta = document.querySelector('#result-meta');
+
+      const choices = [
+        { words: ['辣', '麻', '重口'], dish: '麻辣香锅单人套餐', price: 36, note: '热乎、味道足，也方便备注去掉不喜欢的配菜' },
+        { words: ['清淡', '健康', '轻食'], dish: '照烧鸡腿杂粮饭', price: 29, note: '搭配完整，口味相对清爽，作为工作日一餐更稳妥' },
+        { words: ['汤', '热乎', '暖'], dish: '番茄肥牛米线', price: 32, note: '汤汁热乎，酸甜口容易入口，饱腹感也比较合适' },
+        { words: ['面', '粉'], dish: '红烧牛肉面', price: 27, note: '出餐稳定、容易吃饱，是不想纠结时的可靠选择' },
+        { words: ['饭', '米饭'], dish: '黑椒鸡排饭', price: 30, note: '一份里有主食、肉和蔬菜，选择明确且容易执行' }
+      ];
+
+      const showState = (name) => {
+        document.querySelectorAll('[data-state]').forEach((node) => {
+          node.classList.toggle('active', node.dataset.state === name);
+        });
+      };
+
+      const numberOrNull = (input) => input.value === '' ? null : Number(input.value);
+
+      form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        error.textContent = '';
+        const min = numberOrNull(budgetMin);
+        const max = numberOrNull(budgetMax);
+
+        if ((min !== null && min < 0) || (max !== null && max < 0)) {
+          error.textContent = '预算不能小于 0 元。';
+          return;
+        }
+        if (min !== null && max !== null && min > max) {
+          error.textContent = '最低预算不能高于最高预算。';
+          return;
+        }
+
+        submit.disabled = true;
+        submit.textContent = '正在推荐…';
+        showState('loading');
+
+        window.setTimeout(() => {
+          const query = taste.value.trim();
+          const blocked = dislikes.value.trim();
+          let candidates = choices.filter((item) => !blocked || !blocked.includes(item.dish.slice(0, 2)));
+          if (max !== null) candidates = candidates.filter((item) => item.price <= max);
+          if (min !== null) candidates = candidates.filter((item) => item.price >= Math.max(0, min - 12));
+          if (!candidates.length) candidates = choices;
+          const matched = candidates.find((item) => item.words.some((word) => query.includes(word)));
+          const selected = matched || candidates[Math.abs(query.length + blocked.length) % candidates.length];
+          const preferences = query ? `你提到“${query}”` : '你暂时没有限定口味';
+          const avoidance = blocked ? `，同时需要避开“${blocked}”` : '';
+
+          dish.textContent = selected.dish;
+          reason.textContent = `${preferences}${avoidance}。推荐它是因为${selected.note}；基础稿估算约 ${selected.price} 元。`;
+          resultMeta.replaceChildren();
+          [`约 ¥${selected.price}`, blocked ? '已参考忌口' : '无忌口限制', query ? '已参考口味' : '大众选择'].forEach((text) => {
+            const tag = document.createElement('span');
+            tag.textContent = text;
+            resultMeta.appendChild(tag);
+          });
+          showState('success');
+          submit.disabled = false;
+          submit.textContent = '再推荐一次';
+        }, 700);
+      });
+    </script>
+  </body>
+</html>

@@ -3,13 +3,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  getProductPrototype,
   hasConfirmableAgentResult,
+  stripProductPrototype,
   type ProductionRun,
   type ProductionStage,
   type RunEvent
 } from "@factory/shared";
-import { runStatusLabels } from "@/lib/labels";
-import { getEmptyRunPresentation } from "@/lib/run-presentation";
+import { getRunStatusLabel } from "@/lib/labels";
+import { getEmptyRunPresentation, getStageReviewGuidance } from "@/lib/run-presentation";
 import { RetryRunButton } from "@/components/retry-run-button";
 
 const eventLabels: Record<string, string> = {
@@ -49,6 +51,10 @@ const nextActions: Partial<
   adaptation: {
     title: "请确认推荐的技术方案",
     button: "确认方案，生成开发计划"
+  },
+  "stage-design": {
+    title: "开发计划和产品基础稿都符合预期吗？",
+    button: "确认计划和基础稿，进入制作产品"
   }
 };
 
@@ -108,6 +114,7 @@ export function RunConsole({ initialRun, initialEvents }: { initialRun: Producti
     () => events.filter((event) => event.type === "text.delta").map((event) => String(event.payload.delta ?? "")).join(""),
     [events]
   );
+  const visibleOutput = useMemo(() => stripProductPrototype(output), [output]);
   const visibleEvents = useMemo(
     () =>
       events
@@ -122,11 +129,14 @@ export function RunConsole({ initialRun, initialEvents }: { initialRun: Producti
   const approvedEvent = events.find((event) => event.type === "gate.approved");
   const nextRunId = approvedEvent?.payload.nextRunId;
   const nextAction = nextActions[run.stage];
+  const productPrototype = getProductPrototype(events);
   const resultIsConfirmable = hasConfirmableAgentResult(events);
+  const requiredArtifactsReady = run.stage !== "stage-design" || Boolean(productPrototype);
   const canApprove =
     Boolean(nextAction) &&
     !approvedEvent &&
     resultIsConfirmable &&
+    requiredArtifactsReady &&
     (run.status === "waiting_approval" || run.status === "succeeded");
   const elapsedSeconds = Math.max(0, Math.floor((clock - Date.parse(run.createdAt)) / 1000));
   const elapsedLabel =
@@ -134,6 +144,13 @@ export function RunConsole({ initialRun, initialEvents }: { initialRun: Producti
       ? `${elapsedSeconds} 秒`
       : `${Math.floor(elapsedSeconds / 60)} 分 ${elapsedSeconds % 60} 秒`;
   const emptyPresentation = getEmptyRunPresentation(run, resultIsConfirmable, elapsedLabel);
+  const stageReviewGuidance = getStageReviewGuidance(
+    run.stage,
+    productPrototype?.href ?? null
+  );
+  const productPreviewLabel =
+    stageReviewGuidance?.previewLabel ??
+    (run.stage === "implementation" && productPrototype ? "查看制作结果" : null);
 
   async function approve() {
     setApproving(true);
@@ -195,14 +212,26 @@ export function RunConsole({ initialRun, initialEvents }: { initialRun: Producti
         <section className="panel run-output-panel">
         <div className="run-panel-head">
           <h2>AI 结果</h2>
-          <span
-            className={`run-status run-status-${emptyPresentation.statusOverride ? "failed" : run.status}`}
-          >
-            {emptyPresentation.statusOverride ?? runStatusLabels[run.status]}
-          </span>
+          <div className="run-panel-actions">
+            {productPrototype && productPreviewLabel && resultIsConfirmable ? (
+              <a
+                className="result-preview-button"
+                href={productPrototype.href}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {productPreviewLabel}
+              </a>
+            ) : null}
+            <span
+              className={`run-status run-status-${emptyPresentation.statusOverride ? "failed" : run.status}`}
+            >
+              {emptyPresentation.statusOverride ?? getRunStatusLabel(run)}
+            </span>
+          </div>
         </div>
-        {output ? (
-          <ResultDocument output={output} />
+        {visibleOutput ? (
+          <ResultDocument output={visibleOutput} />
         ) : (
           <div className="waiting-output">
             {emptyPresentation.showActivity ? <span className="waiting-pulse" /> : null}

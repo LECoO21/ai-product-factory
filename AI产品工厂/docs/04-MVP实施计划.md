@@ -1,6 +1,6 @@
 # AI 产品工厂｜MVP 实施计划 V0.2
 
-> 状态：V0.2 方向、正式 PRD 和 G2–G4 已确认；G5–G6 未完成前不启动里程碑 3 的 Harness 改造。
+> 状态：V0.2 方向、正式 PRD 和 G2–G5 已确认；G6 未确认前不启动里程碑 3 的 Harness 改造。
 
 > 实施状态：里程碑 1 已完成；里程碑 2 已验证 Pi Agent、DeepSeek、Worker、事件、SSE 和人工确认链路。Agent Blueprint 对照后确认，当前仍是“一张生产单对应一次模型生成”，尚未形成真正的 Agent Harness。V0.2 从里程碑 3 起以 Harness、Workflow Runtime 和 Goal Gate 为主线。
 

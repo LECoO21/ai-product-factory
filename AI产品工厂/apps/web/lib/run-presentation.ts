@@ -1,4 +1,11 @@
-import type { ProductionRun } from "@factory/shared";
+import {
+  getProductPrototype,
+  stripProductPrototype,
+  type ProductionRun,
+  type ProductionStage
+} from "@factory/shared";
+
+export { getProductPrototype, stripProductPrototype };
 
 export type EmptyRunPresentation = {
   message: string;
@@ -6,6 +13,28 @@ export type EmptyRunPresentation = {
   showActivity: boolean;
   statusOverride: string | null;
 };
+
+export type StageReviewGuidance = {
+  eyebrow: string;
+  title: string;
+  description: string;
+  previewHref: string;
+  previewLabel: string;
+};
+
+export function getStageReviewGuidance(
+  stage: ProductionStage,
+  previewHref: string | null
+): StageReviewGuidance | null {
+  if (stage !== "stage-design" || !previewHref) return null;
+  return {
+    eyebrow: "开发计划与基础稿验收",
+    title: "先检查下面的开发计划，再试用当前产品的基础 HTML",
+    description: "开发计划和基础稿都符合预期后，再确认进入正式制作。",
+    previewHref,
+    previewLabel: "查看基础 HTML"
+  };
+}
 
 export function getEmptyRunPresentation(
   run: ProductionRun,

@@ -784,6 +784,7 @@ summary {
   border-color: var(--paper);
   background: var(--paper);
   color: var(--ink);
+  text-decoration: none;
 }
 
 .confirmation-complete {
@@ -831,6 +832,30 @@ summary {
   font-family: var(--serif);
   font-size: 28px;
   font-weight: 400;
+}
+
+.run-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.result-preview-button {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  padding: 0 10px;
+  border: 1px solid var(--ink);
+  border-radius: var(--radius);
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 11px;
+  line-height: 1;
+  text-decoration: none;
+}
+
+.result-preview-button:hover {
+  background: #2c2c29;
 }
 
 .run-status {
@@ -1186,6 +1211,10 @@ summary {
 
   .run-panel-head h2 {
     font-size: 25px;
+  }
+
+  .run-panel-actions {
+    gap: 6px;
   }
 
   .agent-output {
