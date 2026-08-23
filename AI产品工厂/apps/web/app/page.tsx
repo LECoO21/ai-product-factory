@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { getProductFactory } from "@factory/production";
 import { SqliteProductionRunStore } from "@factory/records";
+import { hasConfirmableAgentResult } from "@factory/shared";
 import { ProjectCard } from "@/components/project-card";
+import { CreateProjectForm } from "@/components/create-project-form";
 import { runStatusLabels, stageLabels } from "@/lib/labels";
 
 export const dynamic = "force-dynamic";
@@ -14,28 +16,32 @@ export default function HomePage() {
       runStore.listForProject(project.id).map((run) => ({ run, project }))
     )
     .sort((left, right) => right.run.updatedAt.localeCompare(left.run.updatedAt));
-  const runsWithAction = runs.map((entry) => ({
-    ...entry,
-    needsApproval:
+  const runsWithAction = runs.map((entry) => {
+    const events = runStore.events(entry.run.id);
+    return {
+      ...entry,
+      needsApproval:
       (entry.run.stage === "intake" || entry.run.stage === "adaptation") &&
       (entry.run.status === "waiting_approval" || entry.run.status === "succeeded") &&
-      !runStore.events(entry.run.id).some((event) => event.type === "gate.approved")
-  }));
+      hasConfirmableAgentResult(events) &&
+      !events.some((event) => event.type === "gate.approved")
+    };
+  });
   const attentionRun =
     runsWithAction.find(({ needsApproval }) => needsApproval) ??
     runsWithAction.find(({ run }) => run.status === "running" || run.status === "ready");
 
   return (
-    <div className="page simple-page">
-      <header className="simple-page-header">
-        <h1>我的产品</h1>
-        <Link href="/projects/new" className="primary-button">
-          新建产品
-        </Link>
+    <div className="page factory-home">
+      <header className="factory-home-header">
+        <span>Naxe Agent</span>
+        <h1>告诉我你想做什么产品</h1>
       </header>
 
+      <CreateProjectForm compact />
+
       {attentionRun ? (
-        <section className="attention-card">
+        <section className="attention-card" id="attention">
           <div>
             <span>{attentionRun.needsApproval ? "等你确认" : runStatusLabels[attentionRun.run.status]}</span>
             <h2>{attentionRun.project.name}</h2>
@@ -47,7 +53,11 @@ export default function HomePage() {
         </section>
       ) : null}
 
-      <section id="projects">
+      <section id="projects" className="home-projects">
+        <div className="section-title-row">
+          <h2>最近产品</h2>
+          <Link href="/projects/new">新建</Link>
+        </div>
         {projects.length > 0 ? (
           <div className="project-grid simple-project-grid">
             {projects.map((project) => (

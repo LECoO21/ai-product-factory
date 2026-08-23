@@ -9,7 +9,7 @@ export function ProjectCard({ project }: { project: ProjectSummary }) {
         <span className="status-pill">{statusLabels[project.status]}</span>
       </div>
       <h3>{project.name}</h3>
-      <span className="project-card-action">打开产品 →</span>
+      <span className="project-card-action">打开产品</span>
     </Link>
   );
 }

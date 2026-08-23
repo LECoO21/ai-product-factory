@@ -7,6 +7,7 @@ import {
 } from "@factory/records";
 import {
   projectCreateInputSchema,
+  hasConfirmableAgentResult,
   type ProductProject,
   type ProjectCreateInput,
   type ProjectSummary,
@@ -93,15 +94,33 @@ const nextPlanningStage: Partial<
   }
 };
 
+const retryableRunStatuses = new Set(["waiting_approval", "succeeded", "failed", "blocked"]);
+
 export class ProductionController {
   constructor(private readonly runs: ProductionRunStore) {}
 
   approveAndContinue(runId: string) {
     const run = this.runs.get(runId);
     if (!run) throw new Error("生产步骤不存在");
+    if (!hasConfirmableAgentResult(this.runs.events(run.id))) {
+      throw new Error("AI 结果尚未生成，不能确认");
+    }
     const next = nextPlanningStage[run.stage];
     if (!next) throw new Error("当前步骤之后的生产能力尚未开放");
     return this.runs.approveAndCreateNext(run.id, next.objective, next.stage);
+  }
+
+  retryWithoutResult(runId: string) {
+    const run = this.runs.get(runId);
+    if (!run) throw new Error("生产步骤不存在");
+    if (!retryableRunStatuses.has(run.status)) throw new Error("当前批次仍在处理中");
+    if (hasConfirmableAgentResult(this.runs.events(run.id))) {
+      throw new Error("当前批次已有可确认结果");
+    }
+    if (run.status === "waiting_approval" || run.status === "succeeded") {
+      this.runs.transition(run.id, "failed", "AI 未生成可确认结果");
+    }
+    return this.runs.create(run.projectId, run.objective, run.stage);
   }
 }
 

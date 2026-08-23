@@ -2,8 +2,15 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { ProductionRun, ProductionStage, RunEvent } from "@factory/shared";
+import {
+  hasConfirmableAgentResult,
+  type ProductionRun,
+  type ProductionStage,
+  type RunEvent
+} from "@factory/shared";
 import { runStatusLabels } from "@/lib/labels";
+import { getEmptyRunPresentation } from "@/lib/run-presentation";
+import { RetryRunButton } from "@/components/retry-run-button";
 
 const eventLabels: Record<string, string> = {
   "run.created": "任务已创建",
@@ -70,6 +77,13 @@ export function RunConsole({ initialRun, initialEvents }: { initialRun: Producti
   const [events, setEvents] = useState(initialEvents);
   const [approving, setApproving] = useState(false);
   const [approvalError, setApprovalError] = useState<string | null>(null);
+  const [clock, setClock] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (run.status !== "ready" && run.status !== "running") return;
+    const timer = window.setInterval(() => setClock(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [run.status]);
 
   useEffect(() => {
     const source = new EventSource(`/api/runs/${run.id}/events`);
@@ -108,10 +122,18 @@ export function RunConsole({ initialRun, initialEvents }: { initialRun: Producti
   const approvedEvent = events.find((event) => event.type === "gate.approved");
   const nextRunId = approvedEvent?.payload.nextRunId;
   const nextAction = nextActions[run.stage];
+  const resultIsConfirmable = hasConfirmableAgentResult(events);
   const canApprove =
     Boolean(nextAction) &&
     !approvedEvent &&
+    resultIsConfirmable &&
     (run.status === "waiting_approval" || run.status === "succeeded");
+  const elapsedSeconds = Math.max(0, Math.floor((clock - Date.parse(run.createdAt)) / 1000));
+  const elapsedLabel =
+    elapsedSeconds < 60
+      ? `${elapsedSeconds} 秒`
+      : `${Math.floor(elapsedSeconds / 60)} 分 ${elapsedSeconds % 60} 秒`;
+  const emptyPresentation = getEmptyRunPresentation(run, resultIsConfirmable, elapsedLabel);
 
   async function approve() {
     setApproving(true);
@@ -173,20 +195,19 @@ export function RunConsole({ initialRun, initialEvents }: { initialRun: Producti
         <section className="panel run-output-panel">
         <div className="run-panel-head">
           <h2>AI 结果</h2>
-          <span className={`run-status run-status-${run.status}`}>{runStatusLabels[run.status]}</span>
+          <span
+            className={`run-status run-status-${emptyPresentation.statusOverride ? "failed" : run.status}`}
+          >
+            {emptyPresentation.statusOverride ?? runStatusLabels[run.status]}
+          </span>
         </div>
         {output ? (
           <ResultDocument output={output} />
         ) : (
           <div className="waiting-output">
-            <span className="waiting-pulse" />
-            <p>
-              {run.status === "blocked"
-                ? run.error
-                : run.status === "ready"
-                  ? "等待 AI 开始。"
-                  : "AI 正在处理，请稍候。"}
-            </p>
+            {emptyPresentation.showActivity ? <span className="waiting-pulse" /> : null}
+            <p>{emptyPresentation.message}</p>
+            {emptyPresentation.canRetry ? <RetryRunButton runId={run.id} /> : null}
           </div>
         )}
         </section>

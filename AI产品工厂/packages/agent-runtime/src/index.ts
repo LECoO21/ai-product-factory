@@ -38,46 +38,75 @@ class AsyncEventQueue<T> implements AsyncIterable<T> {
 
 const now = () => new Date().toISOString();
 
-const mapPiEvent = (event: AgentEvent): AgentRuntimeEvent | null => {
-  switch (event.type) {
-    case "agent_start":
-      return { type: "agent.started", payload: {}, occurredAt: now() };
-    case "turn_start":
-      return { type: "turn.started", payload: {}, occurredAt: now() };
-    case "message_update":
-      if (event.assistantMessageEvent.type === "text_delta") {
-        return {
-          type: "text.delta",
-          payload: { delta: event.assistantMessageEvent.delta },
+export const createPiEventMapper = () => {
+  let streamedText = "";
+
+  return (event: AgentEvent): AgentRuntimeEvent[] => {
+    switch (event.type) {
+      case "agent_start":
+        return [{ type: "agent.started", payload: {}, occurredAt: now() }];
+      case "turn_start":
+        return [{ type: "turn.started", payload: {}, occurredAt: now() }];
+      case "message_update":
+        if (event.assistantMessageEvent.type === "text_delta") {
+          streamedText += event.assistantMessageEvent.delta;
+          return [
+            {
+              type: "text.delta",
+              payload: { delta: event.assistantMessageEvent.delta },
+              occurredAt: now()
+            }
+          ];
+        }
+        return [];
+      case "tool_execution_start":
+        return [
+          {
+            type: "tool.started",
+            payload: { toolCallId: event.toolCallId, toolName: event.toolName },
+            occurredAt: now()
+          }
+        ];
+      case "tool_execution_end":
+        return [
+          {
+            type: "tool.completed",
+            payload: {
+              toolCallId: event.toolCallId,
+              toolName: event.toolName,
+              isError: event.isError
+            },
+            occurredAt: now()
+          }
+        ];
+      case "agent_end": {
+        const mapped: AgentRuntimeEvent[] = [];
+        if (!streamedText.trim()) {
+          const finalText = event.messages
+            .flatMap((message) => (message.role === "assistant" ? message.content : []))
+            .map((content) => (content.type === "text" ? content.text : ""))
+            .filter(Boolean)
+            .join("\n")
+            .trim();
+          if (finalText) {
+            mapped.push({
+              type: "text.delta",
+              payload: { delta: finalText },
+              occurredAt: now()
+            });
+          }
+        }
+        mapped.push({
+          type: "agent.completed",
+          payload: { messageCount: event.messages.length },
           occurredAt: now()
-        };
+        });
+        return mapped;
       }
-      return null;
-    case "tool_execution_start":
-      return {
-        type: "tool.started",
-        payload: { toolCallId: event.toolCallId, toolName: event.toolName },
-        occurredAt: now()
-      };
-    case "tool_execution_end":
-      return {
-        type: "tool.completed",
-        payload: {
-          toolCallId: event.toolCallId,
-          toolName: event.toolName,
-          isError: event.isError
-        },
-        occurredAt: now()
-      };
-    case "agent_end":
-      return {
-        type: "agent.completed",
-        payload: { messageCount: event.messages.length },
-        occurredAt: now()
-      };
-    default:
-      return null;
-  }
+      default:
+        return [];
+    }
+  };
 };
 
 export class PiAgentRuntime implements AgentRuntime {
@@ -125,9 +154,9 @@ export class PiAgentRuntime implements AgentRuntime {
       toolExecution: "sequential"
     });
 
+    const mapPiEvent = createPiEventMapper();
     agent.subscribe((event) => {
-      const mapped = mapPiEvent(event);
-      if (mapped) queue.push(mapped);
+      for (const mapped of mapPiEvent(event)) queue.push(mapped);
     });
 
     void agent

@@ -3,7 +3,13 @@ import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { PiAgentRuntime } from "@factory/agent-runtime";
 import { SqliteProductionRunStore, SqliteProjectRegistry } from "@factory/records";
-import type { ProductProject, ProductionRun, ProductionStage } from "@factory/shared";
+import {
+  hasConfirmableAgentResult,
+  type AgentRuntimeEvent,
+  type ProductProject,
+  type ProductionRun,
+  type ProductionStage
+} from "@factory/shared";
 
 const envFile = fileURLToPath(new URL("../../../.env", import.meta.url));
 if (existsSync(envFile)) process.loadEnvFile(envFile);
@@ -104,8 +110,10 @@ async function executeNext() {
   let completed = false;
   let failedMessage: string | null = null;
   let missingConfiguration = false;
+  const executionEvents: AgentRuntimeEvent[] = [];
 
   for await (const event of runtime.run(assignment)) {
+    executionEvents.push(event);
     runs.append(run.id, event.type, event.payload);
     if (event.type === "agent.completed") completed = true;
     if (event.type === "agent.failed") {
@@ -114,10 +122,10 @@ async function executeNext() {
     }
   }
 
-  if (completed) {
+  if (completed && hasConfirmableAgentResult(executionEvents)) {
     runs.append(run.id, "gate.requested", { gate: "product_scope", stage: run.stage });
     runs.transition(run.id, "waiting_approval");
-  }
+  } else if (completed) runs.transition(run.id, "failed", "AI 未生成可确认结果，请重新分析");
   else if (missingConfiguration) runs.transition(run.id, "blocked", failedMessage);
   else runs.transition(run.id, "failed", failedMessage ?? "Agent 未正常结束");
   return true;

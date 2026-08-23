@@ -142,6 +142,24 @@ export const runEventSchema = z.object({
 
 export type RunEvent = z.infer<typeof runEventSchema>;
 
+export type AgentResultEvent = {
+  type: string;
+  payload: Record<string, unknown>;
+};
+
+export const MIN_CONFIRMABLE_AGENT_RESULT_CHARACTERS = 20;
+
+export const hasConfirmableAgentResult = (events: AgentResultEvent[]) => {
+  if (!events.some((event) => event.type === "agent.completed")) return false;
+  if (events.some((event) => event.type === "agent.failed")) return false;
+  const result = events
+    .filter((event) => event.type === "text.delta")
+    .map((event) => String(event.payload.delta ?? ""))
+    .join("")
+    .replace(/\s/g, "");
+  return result.length >= MIN_CONFIRMABLE_AGENT_RESULT_CHARACTERS;
+};
+
 export type AgentAssignment = {
   runId: string;
   systemPrompt: string;

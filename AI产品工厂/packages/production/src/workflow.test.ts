@@ -36,6 +36,11 @@ const createProject = (databasePath: string) => {
   return project;
 };
 
+const appendConfirmableResult = (runs: SqliteProductionRunStore, runId: string) => {
+  runs.append(runId, "text.delta", { delta: "这是一份已经完整生成、可供产品负责人确认的结果。" });
+  runs.append(runId, "agent.completed", { messageCount: 2 });
+};
+
 describe("ProductionController", () => {
   it("persists intake approval and creates exactly one adaptation run", () => {
     const directory = mkdtempSync(join(tmpdir(), "factory-workflow-"));
@@ -43,6 +48,7 @@ describe("ProductionController", () => {
     const project = createProject(databasePath);
     const runs = new SqliteProductionRunStore(databasePath);
     const intake = runs.create(project.id, "生成产品理解摘要", "intake");
+    appendConfirmableResult(runs, intake.id);
     runs.transition(intake.id, "waiting_approval");
     const controller = createProductionController(runs);
 
@@ -63,9 +69,11 @@ describe("ProductionController", () => {
     const project = createProject(databasePath);
     const runs = new SqliteProductionRunStore(databasePath);
     const intake = runs.create(project.id, "生成产品理解摘要", "intake");
+    appendConfirmableResult(runs, intake.id);
     runs.transition(intake.id, "waiting_approval");
     const controller = createProductionController(runs);
     const adaptation = controller.approveAndContinue(intake.id).nextRun;
+    appendConfirmableResult(runs, adaptation.id);
     runs.transition(adaptation.id, "waiting_approval");
 
     const first = controller.approveAndContinue(adaptation.id);
@@ -77,5 +85,36 @@ describe("ProductionController", () => {
     expect(repeated.nextRun.id).toBe(first.nextRun.id);
     expect(runs.listForProject(project.id)).toHaveLength(3);
     expect(runs.events(adaptation.id).map((event) => event.type)).toContain("gate.approved");
+  });
+
+  it("rejects approval when an Agent completed without producing a result", () => {
+    const directory = mkdtempSync(join(tmpdir(), "factory-workflow-"));
+    const databasePath = join(directory, "factory.sqlite");
+    const project = createProject(databasePath);
+    const runs = new SqliteProductionRunStore(databasePath);
+    const intake = runs.create(project.id, "生成产品理解摘要", "intake");
+    runs.append(intake.id, "agent.completed", { messageCount: 2 });
+    runs.transition(intake.id, "waiting_approval");
+
+    expect(() => createProductionController(runs).approveAndContinue(intake.id)).toThrow(
+      "AI 结果尚未生成，不能确认"
+    );
+  });
+
+  it("retries the same stage after an Agent completed without a result", () => {
+    const directory = mkdtempSync(join(tmpdir(), "factory-workflow-"));
+    const databasePath = join(directory, "factory.sqlite");
+    const project = createProject(databasePath);
+    const runs = new SqliteProductionRunStore(databasePath);
+    const intake = runs.create(project.id, "生成产品理解摘要", "intake");
+    runs.append(intake.id, "agent.completed", { messageCount: 2 });
+    runs.transition(intake.id, "waiting_approval");
+
+    const retried = createProductionController(runs).retryWithoutResult(intake.id);
+
+    expect(runs.get(intake.id)?.status).toBe("failed");
+    expect(retried.stage).toBe("intake");
+    expect(retried.status).toBe("ready");
+    expect(retried.objective).toBe(intake.objective);
   });
 });

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
+import type { AgentEvent } from "@earendil-works/pi-agent-core";
 import type { AgentAssignment } from "@factory/shared";
-import { InMemoryAgentRuntime, PiAgentRuntime } from "./index";
+import { createPiEventMapper, InMemoryAgentRuntime, PiAgentRuntime } from "./index";
 
 const assignment: AgentAssignment = {
   runId: "run-1",
@@ -36,5 +37,43 @@ describe("AgentRuntime", () => {
     const types = [];
     for await (const event of runtime.run(assignment)) types.push(event.type);
     expect(types).toEqual(["agent.started", "text.delta", "agent.completed"]);
+  });
+
+  it("recovers final assistant text when the provider emitted no text deltas", () => {
+    const mapEvent = createPiEventMapper();
+    const events = mapEvent({
+      type: "agent_end",
+      messages: [
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "这是最终完整的产品理解结果。" }]
+        }
+      ]
+    } as AgentEvent);
+
+    expect(events).toEqual([
+      expect.objectContaining({ type: "text.delta", payload: { delta: "这是最终完整的产品理解结果。" } }),
+      expect.objectContaining({ type: "agent.completed", payload: { messageCount: 1 } })
+    ]);
+  });
+
+  it("does not duplicate final assistant text after streaming deltas", () => {
+    const mapEvent = createPiEventMapper();
+    const streamed = mapEvent({
+      type: "message_update",
+      assistantMessageEvent: { type: "text_delta", delta: "已流式输出" }
+    } as AgentEvent);
+    const completed = mapEvent({
+      type: "agent_end",
+      messages: [
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "已流式输出" }]
+        }
+      ]
+    } as AgentEvent);
+
+    expect(streamed.map((event) => event.type)).toEqual(["text.delta"]);
+    expect(completed.map((event) => event.type)).toEqual(["agent.completed"]);
   });
 });
