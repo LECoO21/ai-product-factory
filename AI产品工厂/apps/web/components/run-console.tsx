@@ -28,6 +28,9 @@ const eventLabels: Record<string, string> = {
   "run.succeeded": "这一步已完成",
   "run.failed": "这一步失败",
   "run.waiting_approval": "等待你的确认",
+  "quality.started": "开始自动检查",
+  "quality.completed": "自动检查完成",
+  "quality.failed": "自动检查失败",
   "gate.requested": "需要你确认",
   "gate.approved": "你已确认，进入下一步"
 };
@@ -55,6 +58,22 @@ const nextActions: Partial<
   "stage-design": {
     title: "开发计划和产品基础稿都符合预期吗？",
     button: "确认计划和基础稿，进入制作产品"
+  },
+  implementation: {
+    title: "请先打开制作结果，确认它是要继续检查的产品版本",
+    button: "确认制作结果，开始自动检查"
+  },
+  "automated-quality": {
+    title: "自动检查已通过，可以进入真实产品验收",
+    button: "确认检查结果，开始真实验收"
+  },
+  "real-acceptance": {
+    title: "请亲自打开产品并完成核心操作",
+    button: "我已验收通过，生成发布准备方案"
+  },
+  "release-preparation": {
+    title: "发布准备方案已生成，本次不会自动部署",
+    button: "确认方案，结束本次试产"
   }
 };
 
@@ -131,7 +150,9 @@ export function RunConsole({ initialRun, initialEvents }: { initialRun: Producti
   const nextAction = nextActions[run.stage];
   const productPrototype = getProductPrototype(events);
   const resultIsConfirmable = hasConfirmableAgentResult(events);
-  const requiredArtifactsReady = run.stage !== "stage-design" || Boolean(productPrototype);
+  const requiredArtifactsReady =
+    !["stage-design", "implementation", "real-acceptance"].includes(run.stage) ||
+    Boolean(productPrototype);
   const canApprove =
     Boolean(nextAction) &&
     !approvedEvent &&
@@ -150,16 +171,29 @@ export function RunConsole({ initialRun, initialEvents }: { initialRun: Producti
   );
   const productPreviewLabel =
     stageReviewGuidance?.previewLabel ??
-    (run.stage === "implementation" && productPrototype ? "查看制作结果" : null);
+    (run.stage === "implementation" && productPrototype
+      ? "查看制作结果"
+      : run.stage === "real-acceptance" && productPrototype
+        ? "打开产品验收"
+        : null);
 
   async function approve() {
     setApproving(true);
     setApprovalError(null);
     try {
       const response = await fetch(`/api/runs/${run.id}/approve`, { method: "POST" });
-      const result = (await response.json()) as { nextRun?: ProductionRun; error?: string };
-      if (!response.ok || !result.nextRun) throw new Error(result.error ?? "无法进入下一步");
-      router.push(`/runs/${result.nextRun.id}`);
+      const result = (await response.json()) as {
+        completedRun?: ProductionRun;
+        nextRun?: ProductionRun | null;
+        error?: string;
+      };
+      if (!response.ok || !result.completedRun) throw new Error(result.error ?? "无法进入下一步");
+      if (result.nextRun) router.push(`/runs/${result.nextRun.id}`);
+      else {
+        setRun(result.completedRun);
+        setApproving(false);
+        router.refresh();
+      }
     } catch (error) {
       setApprovalError(error instanceof Error ? error.message : "无法进入下一步");
       setApproving(false);
@@ -205,6 +239,13 @@ export function RunConsole({ initialRun, initialEvents }: { initialRun: Producti
           <button className="primary-button" type="button" onClick={() => router.push(`/runs/${nextRunId}`)}>
             查看下一步
           </button>
+        </section>
+      ) : null}
+
+      {approvedEvent?.payload.completed === true ? (
+        <section className="confirmation-card confirmation-complete">
+          <h2>本次试产已完成</h2>
+          <p>发布或推送尚未执行，需要时再单独确认。</p>
         </section>
       ) : null}
 

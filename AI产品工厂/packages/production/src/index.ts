@@ -96,6 +96,18 @@ const nextPlanningStage: Partial<
   "stage-design": {
     stage: "implementation",
     objective: "根据已确认的开发计划和产品基础稿制作第一版可运行产品"
+  },
+  implementation: {
+    stage: "automated-quality",
+    objective: "对已确认的第一版产品执行确定性检查和真实接口冒烟"
+  },
+  "automated-quality": {
+    stage: "real-acceptance",
+    objective: "请产品负责人亲自操作第一版产品并确认真实体验"
+  },
+  "real-acceptance": {
+    stage: "release-preparation",
+    objective: "根据已确认的产品和验收结果生成发布准备方案，不执行部署"
   }
 };
 
@@ -113,6 +125,15 @@ export class ProductionController {
     }
     if (run.stage === "stage-design" && !getProductPrototype(events)) {
       throw new Error("当前产品基础 HTML 尚未生成，不能进入制作产品");
+    }
+    if (
+      (run.stage === "implementation" || run.stage === "real-acceptance") &&
+      !getProductPrototype(events)
+    ) {
+      throw new Error("当前可运行产品尚未登记，不能进入下一步");
+    }
+    if (run.stage === "release-preparation") {
+      return this.runs.approveAndComplete(run.id);
     }
     const next = nextPlanningStage[run.stage];
     if (!next) throw new Error("当前步骤之后的生产能力尚未开放");

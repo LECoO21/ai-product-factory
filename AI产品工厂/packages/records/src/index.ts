@@ -35,6 +35,7 @@ export interface ProductionRunStore {
     nextObjective: string,
     nextStage: ProductionStage
   ): { completedRun: ProductionRun; nextRun: ProductionRun };
+  approveAndComplete(id: string): { completedRun: ProductionRun; nextRun: null };
 }
 
 type ProjectRow = {
@@ -431,6 +432,28 @@ export class SqliteProductionRunStore implements ProductionRunStore {
         nextStage
       });
       return { completedRun, nextRun };
+    })();
+  }
+
+  approveAndComplete(id: string) {
+    return this.database.transaction(() => {
+      const run = this.get(id);
+      if (!run) throw new Error(`生产批次不存在：${id}`);
+      const approved = this.events(id).find((event) => event.type === "gate.approved");
+      if (approved?.payload.completed === true) {
+        return { completedRun: run, nextRun: null };
+      }
+      if (run.status !== "waiting_approval" && run.status !== "succeeded") {
+        throw new Error("当前步骤尚未等待确认");
+      }
+      const completedRun =
+        run.status === "succeeded" ? run : this.transition(run.id, "succeeded");
+      this.append(run.id, "gate.approved", {
+        gate: "release_preparation",
+        completed: true,
+        deploymentStarted: false
+      });
+      return { completedRun, nextRun: null };
     })();
   }
 }

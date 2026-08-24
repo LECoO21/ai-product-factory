@@ -11,6 +11,7 @@ import {
   type ProductionRun,
   type ProductionStage
 } from "@factory/shared";
+import { formatProductQualityReport, runProductQuality } from "./product-quality";
 
 const envFile = fileURLToPath(new URL("../../../.env", import.meta.url));
 if (existsSync(envFile)) process.loadEnvFile(envFile);
@@ -34,7 +35,10 @@ const manualContext = manualPaths.every(existsSync)
   : null;
 
 const stationInstructions: Record<
-  Extract<ProductionStage, "intake" | "adaptation" | "stage-design" | "implementation">,
+  Extract<
+    ProductionStage,
+    "intake" | "adaptation" | "stage-design" | "implementation" | "release-preparation"
+  >,
   { systemPrompt: string; outputRequest: string }
 > = {
   intake: {
@@ -59,6 +63,12 @@ const stationInstructions: Record<
       "你是 AI 产品工厂的制作产品工位。严格遵守随任务提供的三份原始手册、已确认开发计划和产品基础稿，制作当前第一阶段的可运行产品。只制作当前产品，不得输出产品工厂自己的流程演示。",
     outputRequest:
       "请先简洁说明本次制作完成的功能、用户可见状态、限制和验收方法。文档末尾必须依次输出 <!-- PRODUCT_PROTOTYPE_START -->、完整且无需外部依赖的单文件 HTML、<!-- PRODUCT_PROTOTYPE_END -->。HTML 必须是当前产品的第一版可运行结果，覆盖核心输入、操作、加载、成功、失败和空状态；不得外连资源、不得泄露密钥、不得把示例数据冒充真实服务。"
+  },
+  "release-preparation": {
+    systemPrompt:
+      "你是 AI 产品工厂的发布准备工位。严格遵守三份原始手册，只生成当前产品的发布准备方案，不执行 Git push、建仓库、购买资源、配置正式凭证或部署。",
+    outputRequest:
+      "请生成简洁发布准备方案，包含候选版本、目标环境、必要配置、自动检查与人工验收证据、发布前确认项、发布步骤、回滚方案和明确未执行事项。"
   }
 };
 
@@ -73,6 +83,90 @@ const previousResult = (run: ProductionRun) => {
     .map((event) => String(event.payload.delta ?? ""))
     .join("");
 };
+
+const previousImplementationArtifact = (run: ProductionRun) => {
+  const implementation = runs
+    .listForProject(run.projectId)
+    .find(
+      (candidate) =>
+        candidate.createdAt < run.createdAt &&
+        candidate.stage === "implementation" &&
+        candidate.status === "succeeded"
+    );
+  if (!implementation) return null;
+  const artifact = [...runs.events(implementation.id)]
+    .reverse()
+    .find(
+      (event) =>
+        event.type === "artifact.created" && event.payload.kind === "product-prototype-html"
+    );
+  const content = artifact?.payload.content;
+  return typeof content === "string" && content.trim()
+    ? { run: implementation, content }
+    : null;
+};
+
+async function executeAutomatedQuality(run: ProductionRun) {
+  const source = previousImplementationArtifact(run);
+  if (!source) {
+    runs.transition(run.id, "failed", "找不到已确认的第一版产品 HTML，无法自动检查");
+    return;
+  }
+
+  runs.append(run.id, "quality.started", { sourceRunId: source.run.id });
+  try {
+    const report = await runProductQuality(source.content, {
+      origin: process.env.FACTORY_WEB_ORIGIN?.trim() || "http://localhost:3000"
+    });
+    runs.append(run.id, "text.delta", { delta: formatProductQualityReport(report) });
+    runs.append(run.id, "quality.completed", {
+      passed: report.passed,
+      sourceRunId: source.run.id,
+      checks: report.checks
+    });
+    if (!report.passed) {
+      runs.transition(run.id, "failed", "自动检查未通过，请查看失败项后重新制作");
+      return;
+    }
+    runs.append(run.id, "agent.completed", { deterministic: true, checkCount: report.checks.length });
+    runs.append(run.id, "gate.requested", { gate: "automated_quality", stage: run.stage });
+    runs.transition(run.id, "waiting_approval");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "自动检查执行失败";
+    runs.append(run.id, "quality.failed", { message });
+    runs.transition(run.id, "failed", message);
+  }
+}
+
+function prepareRealAcceptance(run: ProductionRun, project: ProductProject) {
+  const source = previousImplementationArtifact(run);
+  if (!source) {
+    runs.transition(run.id, "failed", "找不到已确认的第一版产品，无法开始真实验收");
+    return;
+  }
+  runs.append(run.id, "artifact.created", {
+    kind: "product-prototype-html",
+    title: `${project.name}｜真实验收版本`,
+    mediaType: "text/html",
+    href: `/api/runs/${source.run.id}/prototype`,
+    content: source.content
+  });
+  runs.append(run.id, "text.delta", {
+    delta: [
+      "# 真实产品验收",
+      "",
+      "请点击“打开产品验收”，亲自完成一次核心操作。",
+      "",
+      "- 检查输入是否容易理解",
+      "- 检查加载、成功和失败反馈是否清楚",
+      "- 检查结果是否符合真实使用预期",
+      "- 确认通过后，系统只生成发布准备方案，不会自动部署"
+    ].join("\n")
+  });
+  runs.append(run.id, "agent.completed", { deterministic: true, sourceRunId: source.run.id });
+  runs.append(run.id, "gate.requested", { gate: "real_acceptance", stage: run.stage });
+  runs.transition(run.id, "waiting_approval");
+}
 
 const buildAssignment = (run: ProductionRun, project: ProductProject) => {
   if (!(run.stage in stationInstructions)) return null;
@@ -106,6 +200,14 @@ async function executeNext() {
   }
   if (!manualContext) {
     runs.transition(run.id, "blocked", "三份原始手册缺失，已停止生产");
+    return true;
+  }
+  if (run.stage === "automated-quality") {
+    await executeAutomatedQuality(run);
+    return true;
+  }
+  if (run.stage === "real-acceptance") {
+    prepareRealAcceptance(run, project);
     return true;
   }
   const assignment = buildAssignment(run, project);
