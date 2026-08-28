@@ -1,6 +1,6 @@
 # 第一阶段完成目标｜最小可执行 Harness
 
-> 完成目标状态：G6 待产品负责人确认
+> 完成目标状态：G6 `approved`（产品负责人于 2026-08-25 确认；验收结果仍待实现与验证）
 >
 > 完成目标 ID：`CG-V02B-HARNESS-001`
 >
@@ -20,7 +20,7 @@
 
 ```text
 manualsVerified
-AND singlePiAgentHarness
+AND singlePiAgentLoop
 AND toolGatewaySafe
 AND deterministicFailureRepairLoopPassed
 AND taskAndBackgroundFactsPersisted
@@ -95,13 +95,14 @@ type CompletionDecision =
 - `EV-MANUALS-GUARD`：失败路径测试报告；
 - `EV-MANUALS-DIFF`：手册 hash 与 Git 范围检查。
 
-### CG-02 单一 Pi Agent Harness
+### CG-02 单一 Pi Agent Loop
 
 必须满足：
 
-- 生产执行使用 Pi `AgentHarness@0.84.2`；
+- 生产执行使用 Pi `Agent@0.84.2`；
+- 高层 `AgentHarness@0.84.2` 的未实现能力缺口有真实失败证据和明确适配说明；
 - FactoryHarness 只是领域 Wrapper 和 Adapter；
-- run、steer、abort、completed/aborted/failed/suspended 均有映射测试；
+- run、steer、abort、completed/aborted/failed 均有映射测试；人工等待由生产控制器管理；
 - 工具执行为 sequential；
 - 没有第二套自定义 Agent while-loop。
 
@@ -417,11 +418,11 @@ Artifact 只存在文件名但打不开、hash 不一致、内容为空或来源
 
 ## 10. G6 确认
 
-- [ ] 成功状态只有一个且由确定性代码写入；
-- [ ] CG-01–CG-10 每项都有可检查的必需证据；
-- [ ] mock、真实模型、真实浏览器和仓库检查不能互相替代；
-- [ ] 失败、阻塞、等待用户、取消、中断和预算耗尽出口明确；
-- [ ] 模型停止、等待超时和空结果明确不等于完成；
-- [ ] 成功范围没有扩张到 Workflow、GoalGate、小游戏或部署。
+- [x] 成功状态只有一个且由确定性代码写入；
+- [x] CG-01–CG-10 每项都有可检查的必需证据；
+- [x] mock、真实模型、真实浏览器和仓库检查不能互相替代；
+- [x] 失败、阻塞、等待用户、取消、中断和预算耗尽出口明确；
+- [x] 模型停止、等待超时和空结果明确不等于完成；
+- [x] 成功范围没有扩张到 Workflow、GoalGate、小游戏或部署。
 
 产品负责人确认后，本完成目标与生产单一同冻结为 G6 `approved` 版本；后续修改目标、预算或证据要求必须产生新版本并重新确认。

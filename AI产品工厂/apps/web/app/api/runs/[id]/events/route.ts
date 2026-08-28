@@ -21,6 +21,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         }
       };
       request.signal.addEventListener("abort", close, { once: true });
+      controller.enqueue(encoder.encode(": connected\n\n"));
 
       while (!request.signal.aborted) {
         const events = store.events(id, lastSequence);

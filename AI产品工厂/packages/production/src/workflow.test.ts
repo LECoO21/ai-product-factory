@@ -68,7 +68,11 @@ describe("ProductionController", () => {
     expect(firstNext.status).toBe("ready");
     expect(repeatedNext.id).toBe(firstNext.id);
     expect(runs.listForProject(project.id)).toHaveLength(2);
-    expect(runs.events(intake.id).map((event) => event.type)).toContain("gate.approved");
+    const eventTypes = runs.events(intake.id).map((event) => event.type);
+    expect(eventTypes).toContain("gate.approved");
+    expect(eventTypes.filter((type) => type === "protocol.approval.resolved")).toHaveLength(1);
+    expect(eventTypes.filter((type) => type === "protocol.turn.completed")).toHaveLength(1);
+    expect(eventTypes.filter((type) => type === "protocol.checkpoint.created")).toHaveLength(1);
   });
 
   it("continues from adaptation approval to exactly one stage-design run", () => {
@@ -152,9 +156,33 @@ describe("ProductionController", () => {
     expect(runs.listForProject(project.id)).toHaveLength(2);
   });
 
+  it("accepts a completed G6 Harness validation and stops before G7", () => {
+    const directory = mkdtempSync(join(tmpdir(), "factory-workflow-"));
+    const databasePath = join(directory, "factory.sqlite");
+    const project = createProject(databasePath);
+    const runs = new SqliteProductionRunStore(databasePath);
+    const implementation = runs.create(project.id, "验证最小 Harness", "implementation");
+    appendConfirmableResult(runs, implementation.id);
+    runs.append(implementation.id, "harness.completed", {
+      harnessRunId: "harness-1",
+      completionGoal: "CG-06"
+    });
+    runs.transition(implementation.id, "waiting_approval");
+
+    const result = createProductionController(runs).approveAndContinue(implementation.id);
+
+    expect(result.completedRun.status).toBe("succeeded");
+    expect(result.nextRun).toBeNull();
+    expect(runs.events(implementation.id)).toContainEqual(
+      expect.objectContaining({ type: "gate.approved", payload: expect.objectContaining({ completed: true }) })
+    );
+  });
+
   it.each([
     ["automated-quality", "real-acceptance"],
-    ["real-acceptance", "release-preparation"]
+    ["real-acceptance", "release-preparation"],
+    ["release-preparation", "release-readiness"],
+    ["release-readiness", "release-handoff"]
   ] as const)("continues from %s to %s", (currentStage, nextStage) => {
     const directory = mkdtempSync(join(tmpdir(), "factory-workflow-"));
     const databasePath = join(directory, "factory.sqlite");
@@ -177,26 +205,47 @@ describe("ProductionController", () => {
     expect(result.nextRun?.status).toBe("ready");
   });
 
-  it("completes release preparation without starting a deployment", () => {
+  it("completes the release flow as a candidate without starting a deployment", () => {
     const directory = mkdtempSync(join(tmpdir(), "factory-workflow-"));
     const databasePath = join(directory, "factory.sqlite");
     const project = createProject(databasePath);
     const runs = new SqliteProductionRunStore(databasePath);
-    const release = runs.create(project.id, "生成发布准备方案", "release-preparation");
-    appendConfirmableResult(runs, release.id);
-    runs.transition(release.id, "waiting_approval");
+    const releasePlan = runs.create(project.id, "生成上线方案", "release-preparation");
+    appendConfirmableResult(runs, releasePlan.id);
+    runs.transition(releasePlan.id, "waiting_approval");
     const controller = createProductionController(runs);
 
-    const first = controller.approveAndContinue(release.id);
-    const repeated = controller.approveAndContinue(release.id);
+    const readiness = requireNextRun(controller.approveAndContinue(releasePlan.id).nextRun);
+    appendConfirmableResult(runs, readiness.id);
+    runs.transition(readiness.id, "waiting_approval");
+    const handoff = requireNextRun(controller.approveAndContinue(readiness.id).nextRun);
+    appendConfirmableResult(runs, handoff.id);
+    runs.transition(handoff.id, "waiting_approval");
+
+    const first = controller.approveAndContinue(handoff.id);
+    const repeated = controller.approveAndContinue(handoff.id);
 
     expect(first.completedRun.status).toBe("succeeded");
     expect(first.nextRun).toBeNull();
     expect(repeated.nextRun).toBeNull();
-    expect(runs.listForProject(project.id)).toHaveLength(1);
-    expect(runs.events(release.id)).toContainEqual(
-      expect.objectContaining({ type: "gate.approved", payload: expect.objectContaining({ completed: true }) })
+    expect(runs.listForProject(project.id).map((run) => run.stage)).toEqual(
+      expect.arrayContaining(["release-preparation", "release-readiness", "release-handoff"])
     );
+    expect(runs.listForProject(project.id)).toHaveLength(3);
+    expect(new SqliteProjectRegistry(databasePath).get(project.id)?.status).toBe("candidate");
+    expect(runs.events(handoff.id)).toContainEqual(
+      expect.objectContaining({
+        type: "gate.approved",
+        payload: expect.objectContaining({
+          gate: "release_handoff",
+          completed: true,
+          deploymentStarted: false,
+          projectStatus: "candidate"
+        })
+      })
+    );
+    expect(runs.listForProject(project.id).flatMap((run) => runs.events(run.id)))
+      .not.toContainEqual(expect.objectContaining({ type: "deployment.started" }));
   });
 
   it("rejects approval when an Agent completed without producing a result", () => {

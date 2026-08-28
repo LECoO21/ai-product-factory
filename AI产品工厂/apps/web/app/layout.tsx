@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { getProductFactory } from "@factory/production";
 import { FactorySidebar } from "@/components/factory-sidebar";
+import { isCurrentRequestAuthenticated } from "@/lib/auth/current-user";
 import "./globals.css";
 
 export const dynamic = "force-dynamic";
@@ -11,7 +12,11 @@ export const metadata: Metadata = {
   description: "把 PRD 变成可控制、可验证、可恢复的产品生产流程。"
 };
 
-export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
+export default async function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
+  const authenticated = await isCurrentRequestAuthenticated();
+  if (!authenticated) {
+    return <html lang="zh-CN"><body>{children}</body></html>;
+  }
   const projects = getProductFactory().listProjects();
 
   return (

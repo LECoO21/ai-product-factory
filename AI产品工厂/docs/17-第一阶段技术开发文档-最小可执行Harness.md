@@ -1,6 +1,6 @@
 # 第一阶段技术开发文档｜最小可执行 Harness
 
-> 文档状态：G6 待产品负责人确认
+> 文档状态：G6 已由产品负责人确认（2026-08-25），允许进入本文范围内的代码实施
 >
 > 所属路线：V0.2-B 最小可执行 Harness
 >
@@ -20,7 +20,7 @@
 
 ### 1.2 本阶段交付范围
 
-- 单一 `FactoryHarness`，以 Pi Agent 的 `AgentHarness` 作为唯一 Agent Loop 底座；
+- 单一 `FactoryHarness`，以 Pi Agent 的低层 `Agent` 作为唯一 Agent Loop 底座；
 - `ToolGateway`、`PreToolUse` / `PostToolUse` Hooks 与 P0–P3 权限裁决；
 - `ManualAuthority`：先校验三份手册哈希，再按固定顺序完整加载当前阶段需要的原文；
 - 工作区 `list / read / search / patch`；
@@ -95,9 +95,9 @@
 
 - 继续使用现有 Node.js 22、TypeScript、Next.js 16、React 19、Zod、Vitest、SQLite；
 - 使用已安装的 `@earendil-works/pi-agent-core@0.84.2` 与 `@earendil-works/pi-ai@0.84.2`；
-- 直接使用 Pi 的高层 `AgentHarness`，项目只增加领域 Wrapper，不复制其 Agent Loop；
+- 使用 Pi 的低层 `Agent`，项目只增加领域 Wrapper，不复制或自建 Agent Loop；高层 `AgentHarness` 在 0.84.2 与 0.84.3 中的 `prompt`、Hooks 仍为未实现壳，不能作为生产执行入口；
 - Pi 工具参数使用 TypeBox schema，项目 API、配置、数据库和完成目标继续使用 Zod；
-- Pi `AgentHarness` 生产 Session 使用 JSONL 本地持久化，测试使用内存 Session；
+- Pi `Agent` 事件通过 Adapter 写入 `JsonlSessionRepo` 本地持久化；测试使用内存 Port；
 - 工具执行固定为 `sequential`，避免同一工作区并发写入；
 - 长命令采用“提交 + 查询状态”，Web 状态与事件仍由 SQLite + SSE 提供。
 
@@ -105,7 +105,7 @@
 
 | 模块 | 触发原因 | 本阶段处理 |
 | --- | --- | --- |
-| Pi `AgentHarness` | 产品需要连续工具行动、Hooks、steer、abort 与 Session | 启用 |
+| Pi `Agent` + FactoryHarness Adapter | 产品需要连续工具行动、steer、abort 与 Session；高层 `AgentHarness` 当前不可执行 | 启用；唯一 Loop 由 Pi `Agent` 拥有 |
 | TypeBox 1.3.7 | Pi 工具 schema 的直接契约 | 在 `@factory/agent-runtime` 声明直接依赖，锁定现有版本 |
 | SQLite 新表 | Task、工具配对、计划、产物和证据需要持久事实 | 通过编号迁移增量创建 |
 | JSONL Session | Agent 对话与工具结果需要可追溯，不能只在进程数组 | 写入受控 `data/harness-sessions/`，SQLite 只保存索引 |
@@ -129,7 +129,7 @@
 | --- | --- | --- |
 | Web | Next.js / React / TypeScript | 延续锁文件版本 |
 | Worker | Node.js / tsx | Node.js 22；单写入 Worker |
-| Agent Loop | Pi `AgentHarness` | `@earendil-works/pi-agent-core@0.84.2` |
+| Agent Loop | Pi `Agent` | `@earendil-works/pi-agent-core@0.84.2`；禁止自建 while-loop |
 | 模型目录和流 | Pi AI `Models` + DeepSeek provider | `@earendil-works/pi-ai@0.84.2` |
 | 工具 schema | TypeBox | 1.3.7，作为直接依赖声明 |
 | 应用 schema | Zod | 4.4.3 |
@@ -140,16 +140,16 @@
 
 ### 3.2 已核对的真实 Pi 接口
 
-- `AgentHarness.create(options)` 需要真实 `Session`、`Models` 和 `Model`；
-- `AgentLane.prompt()` 返回 `RunResult`，可能为 `completed / aborted / failed / suspended`；
-- `steer()` 在当前 Assistant turn 的工具执行结束后注入消息，不跳过已发起工具；
-- `abort()` 中止当前活动操作，并返回尚未消费的 steer / follow-up；
-- `runToCompletion()`、`waitForIdle()` 和 `watch()` 可驱动和观察运行；
-- Harness Hooks 包含 `before_tool`、`after_tool`；底层 Agent 也提供 `beforeToolCall`、`afterToolCall`；
-- `AgentTool.execute` 在失败时应抛出，Pi 会生成错误 ToolResult；项目的 ToolGateway 负责把预期权限与业务失败先归一化；
-- 工具调用通过 `toolCallId` 配对，事件包含 `tool_execution_start / update / end`；
-- `AgentHarness` 支持 `drive: automatic | manual`，本阶段生产使用 automatic，测试可用 manual 精确验证动作；
-- `AgentHarness` 支持 durable Session，但本阶段不会把它等同于完整 Workflow checkpoint。
+- `AgentHarness.create()` 在 0.84.2 和 0.84.3 虽有公开类型，但真实 `prompt()` 与 Hooks 会返回 `not implemented yet`；真实冒烟已保留失败证据，项目不得假装该高层壳可用；
+- 生产执行改用同一依赖包内已实现的 `Agent`；它拥有工具循环、消息队列、顺序工具执行和运行生命周期，项目不创建第二套 while-loop；
+- `Agent.prompt()` 驱动运行，`Agent.subscribe()` 提供 `message_*`、`tool_execution_*`、`agent_end` 事件；Adapter 将消息与必要事件写入 JSONL Session；
+- `Agent.steer()` 在当前 Assistant turn 的工具执行结束后注入消息，不跳过已发起工具；`Agent.abort()` 中止当前活动运行；
+- `Agent.state.errorMessage` 与最后 Assistant 消息的 `stopReason` 用于映射 completed / aborted / failed；等待人工决定仍由 FactoryHarness 与生产控制器管理；
+- Pi 低层 `Agent` 提供 `beforeToolCall` / `afterToolCall`，本阶段仍把等价的 `PreToolUse` / `PostToolUse` 固定封装在唯一 `ToolGateway.execute` 内，所有 Pi 工具只能经过该入口；
+- `AgentTool.execute` 在失败时抛出，Pi 生成错误 ToolResult；ToolGateway 负责 schema、权限、路径、幂等和业务结果归一化；
+- DeepSeek 工具名只能使用 `[a-zA-Z0-9_-]`；Adapter 暴露合法别名并映射回带点号的内部规范名，数据库始终记录内部规范名；
+- Pi ToolResult 可能含 `undefined` 可选字段；写入 durable Session 前必须清洗为严格 JSON 值，不能让会话记录错误终止 Agent；
+- 工具调用通过 `toolCallId` 配对，事件包含 `tool_execution_start / update / end`；JSONL Session 不能代替完整 Workflow checkpoint。
 
 ### 3.3 FactoryHarness Interface
 
@@ -212,8 +212,8 @@ interface FactoryHarness {
 packages/
 ├── agent-runtime/src/
 │   ├── index.ts                    # AgentRuntime 兼容出口
-│   ├── factory-harness.ts          # 包装 Pi AgentHarness
-│   ├── pi-harness-adapter.ts       # Models、Session、事件映射、steer、abort
+│   ├── factory-harness.ts          # FactoryHarness 领域执行边界
+│   ├── pi-harness-adapter.ts       # 包装 Pi Agent、Models、Session、事件映射、steer、abort
 │   └── prompts/
 │       └── factory-harness-v1.ts   # 版本化系统 Prompt
 ├── harness/src/
@@ -634,7 +634,7 @@ budget_exhausted
 
 本阶段通过后，V0.2-C 可以直接复用：
 
-- FactoryHarness 和 Pi AgentHarness Adapter；
+- FactoryHarness 和 Pi Agent Adapter；
 - ToolGateway、P0–P3、Hooks 与工具配对记录；
 - ManualAuthority；
 - Task、BackgroundJob、WorkPlan、Artifact、Evidence schema；
@@ -646,13 +646,13 @@ budget_exhausted
 
 ## 十四、G6 开工确认
 
-- [ ] 阶段只做最小可执行 Harness，不做完整 Workflow/Goal Gate；
-- [ ] 使用 Pi `AgentHarness` 作为唯一 Loop，不创建第二套 Loop；
-- [ ] 工具、路径、命令、P0–P3、预算和失败出口符合预期；
-- [ ] SQLite 只做编号增量迁移，并先备份和验证现有数据；
-- [ ] mock 闭环必须真实经历测试失败、修复和复测；
-- [ ] 真实 DeepSeek 冒烟、浏览器验收和五项自动检查缺一不可；
-- [ ] 小游戏、非游戏试产、公开部署、push 和危险动作继续不在本阶段；
-- [ ] 只有 `docs/19` 的全部证据成立才算阶段完成。
+- [x] 阶段只做最小可执行 Harness，不做完整 Workflow/Goal Gate；
+- [x] 使用 Pi `Agent` 作为唯一 Loop，不创建第二套 Loop；高层 `AgentHarness` 未实现能力已记录并绕开；
+- [x] 工具、路径、命令、P0–P3、预算和失败出口符合预期；
+- [x] SQLite 只做编号增量迁移，并先备份和验证现有数据；
+- [x] mock 闭环必须真实经历测试失败、修复和复测；
+- [x] 真实 DeepSeek 冒烟、浏览器验收和五项自动检查缺一不可；
+- [x] 小游戏、非游戏试产、公开部署、push 和危险动作继续不在本阶段；
+- [x] 只有 `docs/19` 的全部证据成立才算阶段完成。
 
 产品负责人确认本清单以及 `docs/18`、`docs/19` 后，G6 才正式通过并开放本文范围内的生产代码修改。

@@ -1,7 +1,10 @@
-import { Agent, type AgentEvent } from "@earendil-works/pi-agent-core";
-import { createModels } from "@earendil-works/pi-ai";
-import { deepseekProvider } from "@earendil-works/pi-ai/providers/deepseek";
+import type { AgentEvent } from "@earendil-works/pi-agent-core";
 import type { AgentAssignment, AgentRuntimeEvent } from "@factory/shared";
+import { DeepSeekPiAgentFactory, type PiAgentFactory } from "./model-provider";
+
+export * from "./pi-harness-adapter";
+export * from "./model-provider";
+export * from "./prompts/factory-harness-v1";
 
 export interface AgentRuntime {
   isConfigured(): boolean;
@@ -110,10 +113,16 @@ export const createPiEventMapper = () => {
 };
 
 export class PiAgentRuntime implements AgentRuntime {
-  constructor(private readonly apiKey = process.env.DEEPSEEK_API_KEY?.trim() ?? "") {}
+  private readonly factory: PiAgentFactory;
+
+  constructor(factoryOrApiKey: PiAgentFactory | string = new DeepSeekPiAgentFactory()) {
+    this.factory = typeof factoryOrApiKey === "string"
+      ? new DeepSeekPiAgentFactory(factoryOrApiKey)
+      : factoryOrApiKey;
+  }
 
   isConfigured() {
-    return this.apiKey.length > 0;
+    return this.factory.isConfigured();
   }
 
   run(assignment: AgentAssignment): AsyncIterable<AgentRuntimeEvent> {
@@ -129,30 +138,26 @@ export class PiAgentRuntime implements AgentRuntime {
       return queue;
     }
 
-    const models = createModels();
-    models.setProvider(deepseekProvider());
-    const model = models.getModel("deepseek", assignment.model);
-    if (!model) {
+    let agent;
+    try {
+      agent = this.factory.create({
+        sessionId: assignment.runId,
+        systemPrompt: assignment.systemPrompt,
+        modelName: assignment.model,
+        thinkingLevel: assignment.thinkingLevel
+      });
+    } catch (error) {
       queue.push({
         type: "agent.failed",
-        payload: { code: "deepseek_model_unknown", message: `未知 DeepSeek 模型：${assignment.model}` },
+        payload: {
+          code: "model_provider_error",
+          message: error instanceof Error ? error.message : "模型提供方初始化失败"
+        },
         occurredAt: now()
       });
       queue.end();
       return queue;
     }
-
-    const agent = new Agent({
-      initialState: {
-        systemPrompt: assignment.systemPrompt,
-        model,
-        thinkingLevel: assignment.thinkingLevel
-      },
-      streamFn: models.streamSimple.bind(models),
-      getApiKey: (provider) => (provider === "deepseek" ? this.apiKey : undefined),
-      sessionId: assignment.runId,
-      toolExecution: "sequential"
-    });
 
     const mapPiEvent = createPiEventMapper();
     agent.subscribe((event) => {

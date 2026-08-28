@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { RuleBasedBlueprintCompiler, type BlueprintCompiler } from "@factory/blueprints";
+import { createProtocolEventPublisher } from "@factory/protocol";
 import {
   SqliteProjectRegistry,
   type ProductionRunStore,
@@ -107,7 +108,15 @@ const nextPlanningStage: Partial<
   },
   "real-acceptance": {
     stage: "release-preparation",
-    objective: "根据已确认的产品和验收结果生成发布准备方案，不执行部署"
+    objective: "根据已确认的产品和验收结果生成上线方案，不执行发布"
+  },
+  "release-preparation": {
+    stage: "release-readiness",
+    objective: "检查产品、测试、验收、上线方案和回滚材料是否齐全"
+  },
+  "release-readiness": {
+    stage: "release-handoff",
+    objective: "根据已通过的上线检查生成手工发布清单，不执行发布"
   }
 };
 
@@ -116,12 +125,42 @@ const retryableRunStatuses = new Set(["waiting_approval", "succeeded", "failed",
 export class ProductionController {
   constructor(private readonly runs: ProductionRunStore) {}
 
+  private recordApproval(runId: string, gate: string) {
+    const run = this.runs.get(runId);
+    if (!run) return;
+    if (this.runs.events(runId).some((event) => event.type === "protocol.approval.resolved")) {
+      return;
+    }
+    const requested = [...this.runs.events(runId)]
+      .reverse()
+      .find((event) => event.type === "gate.requested");
+    const approvalId = typeof requested?.payload.approvalId === "string"
+      ? requested.payload.approvalId
+      : `approval:${runId}:${gate}`;
+    const protocol = createProtocolEventPublisher(this.runs, {
+      threadId: run.projectId,
+      turnId: run.id
+    });
+    protocol.emit("approval.resolved", { approvalId, gate, decision: "approved" });
+    protocol.emit("turn.completed", { reason: "human_gate_approved", gate });
+    protocol.emit("checkpoint.created", {
+      checkpointId: `checkpoint:${run.id}:approved`,
+      stage: run.stage,
+      status: "succeeded"
+    });
+  }
+
   approveAndContinue(runId: string) {
     const run = this.runs.get(runId);
     if (!run) throw new Error("生产步骤不存在");
     const events = this.runs.events(run.id);
     if (!hasConfirmableAgentResult(events)) {
       throw new Error("AI 结果尚未生成，不能确认");
+    }
+    if (events.some((event) => event.type === "harness.completed")) {
+      const result = this.runs.approveAndComplete(run.id, "harness_acceptance");
+      this.recordApproval(run.id, "harness_acceptance");
+      return result;
     }
     if (run.stage === "stage-design" && !getProductPrototype(events)) {
       throw new Error("当前产品基础 HTML 尚未生成，不能进入制作产品");
@@ -132,12 +171,16 @@ export class ProductionController {
     ) {
       throw new Error("当前可运行产品尚未登记，不能进入下一步");
     }
-    if (run.stage === "release-preparation") {
-      return this.runs.approveAndComplete(run.id);
+    if (run.stage === "release-handoff") {
+      const result = this.runs.approveAndComplete(run.id, "release_handoff");
+      this.recordApproval(run.id, "release_handoff");
+      return result;
     }
     const next = nextPlanningStage[run.stage];
     if (!next) throw new Error("当前步骤之后的生产能力尚未开放");
-    return this.runs.approveAndCreateNext(run.id, next.objective, next.stage);
+    const result = this.runs.approveAndCreateNext(run.id, next.objective, next.stage);
+    this.recordApproval(run.id, "product_scope");
+    return result;
   }
 
   retryWithoutResult(runId: string) {

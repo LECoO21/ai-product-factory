@@ -43,7 +43,9 @@ const waitingApprovalLabels: Partial<Record<ProductionStage, string>> = {
   implementation: "制作结果待确认",
   "automated-quality": "自动检查待确认",
   "real-acceptance": "验收结果待确认",
-  "release-preparation": "发布方案待确认"
+  "release-preparation": "上线方案待确认",
+  "release-readiness": "上线检查待确认",
+  "release-handoff": "发布交接待确认"
 };
 
 export const getRunStatusLabel = (run: Pick<ProductionRun, "stage" | "status">) =>
@@ -58,7 +60,9 @@ export const stageLabels: Record<ProductionStage, string> = {
   implementation: "制作产品",
   "automated-quality": "自动检查",
   "real-acceptance": "测试验收",
-  "release-preparation": "准备发布"
+  "release-preparation": "生成上线方案",
+  "release-readiness": "检查上线材料",
+  "release-handoff": "待人工发布"
 };
 
 export const valueLabels: Record<string, string> = {

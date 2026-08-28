@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { ProductionRun, RunEvent } from "@factory/shared";
 import {
   getEmptyRunPresentation,
+  getHarnessTestEvidence,
   getProductPrototype,
   getStageReviewGuidance,
   stripProductPrototype
@@ -102,5 +103,21 @@ describe("getRunStatusLabel", () => {
     expect(getRunStatusLabel({ stage: "stage-design", status: "waiting_approval" })).toBe(
       "开发计划待确认"
     );
+  });
+});
+
+describe("getHarnessTestEvidence", () => {
+  it("recognizes CG-06 failed and passed evidence even when the model uses a generic kind", () => {
+    const base = {
+      runId: "harness-run",
+      criterionId: "CG-06",
+      kind: "test",
+      artifactId: null,
+      createdAt: "2026-08-26T00:00:00.000Z"
+    };
+    const failed = { ...base, id: "failed", observation: { exitCode: 1 }, passed: false };
+    const passed = { ...base, id: "passed", observation: { exitCode: 0 }, passed: true };
+
+    expect(getHarnessTestEvidence([failed, passed])).toEqual({ failed, passed });
   });
 });

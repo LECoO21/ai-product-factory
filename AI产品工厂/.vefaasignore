@@ -1,0 +1,12 @@
+.env
+.env.*
+.git/
+.vefaas/
+/data/
+/node_modules/
+coverage/
+playwright-report/
+test-results/
+*.log
+*.tsbuildinfo
+../agent-blueprint/

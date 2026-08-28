@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "exports": "./src/index.ts",
   "scripts": {
     "dev": "tsx watch --exclude '../../node_modules/**' src/index.ts",
     "start": "tsx src/index.ts",
@@ -10,7 +11,9 @@
   },
   "dependencies": {
     "@factory/agent-runtime": "*",
+    "@factory/harness": "*",
     "@factory/records": "*",
+    "@factory/runtime-core": "*",
     "@factory/shared": "*"
   },
   "devDependencies": {

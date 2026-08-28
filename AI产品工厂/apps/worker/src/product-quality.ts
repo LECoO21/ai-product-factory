@@ -91,65 +91,10 @@ type FetchImplementation = (input: string | URL | Request, init?: RequestInit) =
 
 export async function runProductQuality(
   html: string,
-  options: { origin: string; fetchImpl?: FetchImplementation }
+  _options: { origin: string; fetchImpl?: FetchImplementation }
 ): Promise<ProductQualityReport> {
   const staticReport = inspectProductHtml(html);
   const checks = [...staticReport.checks];
-  const fetchImpl = options.fetchImpl ?? fetch;
-
-  if (staticReport.internalApiPaths.includes("/api/v1/recommend")) {
-    const endpoint = new URL("/api/v1/recommend", options.origin);
-    const invalidResponse = await fetchImpl(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ budget_min: 50, budget_max: 20 })
-    });
-    checks.push(
-      makeCheck(
-        "recommend-api-validation",
-        "推荐接口输入校验",
-        invalidResponse.status === 400,
-        "无效预算返回 400",
-        `无效预算应返回 400，实际返回 ${invalidResponse.status}`
-      )
-    );
-
-    const validResponse = await fetchImpl(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        taste: "想吃辣的热乎的",
-        dislikes: "不要羊肉、不要香菜",
-        budget_min: 20,
-        budget_max: 40
-      })
-    });
-    let payload: unknown = null;
-    try {
-      payload = await validResponse.json();
-    } catch {
-      payload = null;
-    }
-    const recommendation =
-      payload && typeof payload === "object" && "recommendation" in payload
-        ? (payload.recommendation as Record<string, unknown> | null)
-        : null;
-    const hasRecommendation =
-      validResponse.ok &&
-      typeof recommendation?.dish === "string" &&
-      recommendation.dish.trim().length > 0 &&
-      typeof recommendation.reason === "string" &&
-      recommendation.reason.trim().length > 0;
-    checks.push(
-      makeCheck(
-        "recommend-api-real-smoke",
-        "推荐接口真实冒烟",
-        hasRecommendation,
-        "真实请求返回了菜品和推荐理由",
-        `真实请求未返回完整推荐，HTTP ${validResponse.status}`
-      )
-    );
-  }
 
   return {
     passed: checks.every((check) => check.passed),

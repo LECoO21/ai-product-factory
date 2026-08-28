@@ -1,0 +1,15 @@
+{
+  "name": "@factory/harness",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@factory/records": "*",
+    "@factory/shared": "*",
+    "zod": "4.4.3"
+  }
+}

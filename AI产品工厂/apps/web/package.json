@@ -10,9 +10,14 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@factory/agent-runtime": "*",
+    "@factory/harness": "*",
     "@factory/production": "*",
     "@factory/records": "*",
+    "@factory/runtime-core": "*",
     "@factory/shared": "*",
+    "@factory/worker": "*",
+    "@sentry/nextjs": "^10.71.0",
     "@tailwindcss/postcss": "4.3.3",
     "next": "16.3.1",
     "react": "19.2.8",

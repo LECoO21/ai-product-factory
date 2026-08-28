@@ -9,6 +9,8 @@ export {
   type ProductPrototype
 } from "./product-prototype";
 
+export * from "./harness-schemas";
+
 export const capabilityPackSchema = z.enum([
   "web-interface",
   "agent-runtime",
@@ -113,7 +115,9 @@ export const productionStageSchema = z.enum([
   "implementation",
   "automated-quality",
   "real-acceptance",
-  "release-preparation"
+  "release-preparation",
+  "release-readiness",
+  "release-handoff"
 ]);
 
 export type ProductionStage = z.infer<typeof productionStageSchema>;

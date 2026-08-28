@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 import { getProductFactory } from "@factory/production";
 import { projectCreateInputSchema } from "@factory/shared";
+import { apiError } from "@/lib/api/server-error";
 
 export const dynamic = "force-dynamic";
 
@@ -16,12 +17,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ project }, { status: 201 });
   } catch (error) {
     if (error instanceof ZodError) {
-      return NextResponse.json(
-        { error: error.issues[0]?.message ?? "产品项目信息不完整" },
-        { status: 400 }
+      const fieldErrors = error.flatten().fieldErrors;
+      return apiError(
+        "INVALID_PROJECT",
+        error.issues[0]?.message ?? "产品项目信息不完整",
+        400,
+        { fieldErrors }
       );
     }
     console.error("Failed to create product project", error);
-    return NextResponse.json({ error: "创建产品项目失败，请检查本地工厂状态。" }, { status: 500 });
+    return apiError("PROJECT_CREATE_FAILED", "创建产品项目失败，请检查本地工厂状态。", 500);
   }
 }

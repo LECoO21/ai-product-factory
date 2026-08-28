@@ -1,0 +1,358 @@
+{
+  "product": "ToonFlow 通用生产架构迁移到 AI 产品工厂",
+  "title": "从“一句话做短剧”到“一句话做产品”",
+  "subtitle": "提炼 ToonFlow 的生产范式，迁移为通用数字产品的设计、开发、验证与发布候选流水线",
+  "generated_at": "2026-08-29",
+  "scope": "基于已完成的 ToonFlow 官网、官方仓库、公开界面证据，以及 AI 产品工厂 V0.5、三份工程手册和用户确认需求，重新设计通用的一句话产品生产架构。短剧不是目标产品，也不新增短剧能力包。",
+  "source_count": 34,
+  "sections": [
+    {
+      "id": "executive-summary",
+      "title": "1. 执行摘要",
+      "kicker": "重新对齐后的结论",
+      "summary": "AI 产品工厂应成为“软件产品版 ToonFlow”：用户说出一句想法，系统通过可编辑的结构化工作区和受控生产流水线，交付可运行、可验证、可发布的产品候选。",
+      "blocks": [
+        {"type":"callout","level":"confirmed","title":"用户确认的目标","text":"要迁移的是 ToonFlow 从模糊创意到成品的产品生产架构，不是复制 ToonFlow，也不是给工厂增加短剧能力。外卖助手、游戏助手、知识库、网站或内部工具都应能从一句话进入同一条通用生产线。E-USER-001"},
+        {"type":"callout","level":"recommended","title":"一句话架构定义","text":"一句话入口 → Product Design Workspace 把想法变成可确认的产品定义和蓝图 → Product Production Workspace 把蓝图变成代码、界面、数据、测试和运行证据 → Runtime Core 与人工闸门决定是否进入发布候选。D-GENERIC-001"},
+        {"type":"cards","title":"六个决定性迁移点","items":[
+          {"title":"迁移生产范式，不迁移业务","text":"保留创意入口、Agent 分工、结构化工作区、资产中心、任务中心和监督机制；小说、角色、分镜、视频等领域对象不进入工厂内核。","level":"recommended","meta":"E-USER-001 / D-GENERIC-001"},
+          {"title":"双工作区而非双内核","text":"产品设计工作区与产品生产工作区共享同一个 Protocol、Runtime Core、ProductionController、记录库和权限边界。","level":"recommended","meta":"E-LOCAL-003 / D-GENERIC-001"},
+          {"title":"一句话不是一次性黑盒","text":"系统主动补全低风险缺项，对影响目标、成本、安全和终端的问题才询问；每个关键产物都可查看、修改、确认和回退。","level":"recommended","meta":"E-MANUAL-001"},
+          {"title":"产物取代聊天成为事实","text":"需求、PRD、领域模型、架构、代码、页面、测试和发布清单都是版本化 Product Artifact；聊天只负责指挥和解释。","level":"recommended","meta":"E-TOON-UI-001 / E-LOCAL-003"},
+          {"title":"真实运行才算生产","text":"Agent 说“完成”不算完成；必须有真实文件、运行结果、自动测试、浏览器证据和所需人工验收。","level":"confirmed","meta":"E-MANUAL-001 / E-LOCAL-002"},
+          {"title":"现有 V0.5 是正确底座","text":"当前工厂已有 Thread/Turn 协议、Runtime Core、确定性工位、ToolGateway、SQLite、SSE、G1–G9 与发布候选流程，应在此基础上扩展体验和产物模型。","level":"confirmed","meta":"E-LOCAL-001 / E-LOCAL-003 / E-LOCAL-004"}
+        ]}
+      ]
+    },
+    {
+      "id": "scope-evidence",
+      "title": "2. 范围、证据与边界",
+      "kicker": "事实、推断与设计分开",
+      "summary": "ToonFlow 只提供可验证的参考模式；目标架构由用户需求、工厂现状和工程手册共同约束。",
+      "blocks": [
+        {"type":"table","title":"核心证据账本","columns":["ID","来源","可确认事实","支持结论","级别"],"rows":[
+          ["E-USER-001","用户 2026-08-29 确认","目标是把 ToonFlow 的通用生产架构迁移到 AI 产品工厂，实现一句话做外卖助手、游戏助手等产品；不做短剧能力包。","目标边界","confirmed"],
+          ["E-TOON-WEB-001","ToonFlow 官网","公开主链路为创意/小说→剧本→分镜→图像→视频，并以一句话、全链路、多 Agent、可干预为卖点。","参考用户体验","confirmed"],
+          ["E-TOON-README-001","Toonflow-app README","实际产品包含项目、ScriptAgent、ProductionAgent、无限画布、模型配置和本地部署。","参考产品结构","confirmed"],
+          ["E-TOON-SRC-001","ToonFlow Agent 源码","两条主 Agent 线会选择子 Agent、Skill 和读写工具，将结果写入结构化工作区。","决策与执行模式","confirmed"],
+          ["E-TOON-UI-001","官方截图 1–10","左侧 Agent 对话，右侧故事/策略/剧本；资产网格、无限画布、候选媒体和任务状态。","双工作区、资产和任务体验","confirmed"],
+          ["E-TOON-DATA-001","SQLite 迁移与路由","项目、事件、剧本、资产、分镜、视频、轨道、任务、Agent 配置、Skill 和记忆分别持久化。","结构化产物优先于聊天","confirmed"],
+          ["E-TOON-GATEWAY-001","供应商与任务源码","统一适配文本、图像、视频、TTS；长任务采用创建、查询、结果写回。","通用执行网关模式","confirmed"],
+          ["E-LOCAL-001","AI 产品工厂 README V0.5","产品项目映射 Thread、生产批次映射 Turn；Pi Agent + DeepSeek；通用内核不含具体产品专属概念。","当前基线","confirmed"],
+          ["E-LOCAL-002","README 与 G6/G7 资料","真实 Harness 已验证受控读写、测试失败、修复、复测、Evidence 与人工确认。","真实执行与证据能力","confirmed"],
+          ["E-LOCAL-003","docs/27","Protocol + Runtime Core 已落地；Core 统一应用终态，Web/Worker/Provider 通过适配边界接入。","迁移落点","confirmed"],
+          ["E-LOCAL-004","docs/26","G9 终点是发布候选和手工发布清单，不实际登录云平台或部署。","发布边界","confirmed"],
+          ["E-MANUAL-001","三份内部手册","固定流程由代码掌管；长任务和人工确认可恢复；真实模型、浏览器和自动测试不得由 mock 冒充。","强制工程底线","confirmed"],
+          ["E-LICENSE-001","ToonFlow LICENSE/README","官方仓库附补充商业条款，不能把派生产品分发边界当作普通 Apache-2.0。","只迁移模式，不复制源码","confirmed"]
+        ]},
+        {"type":"callout","level":"unknown","title":"仍需通过试产回答","text":"一句话输入对不同产品类型的最低信息是否足够、哪些澄清必须问、产品资产画布是否显著提升效率、同一 Factory Agent 是否足以覆盖设计和生产、跨技术栈生产的稳定性及单产品成本，均需用真实外卖助手/游戏助手纵向切片验证。U-GENERIC-001"}
+      ]
+    },
+    {
+      "id": "functional-domains",
+      "title": "3. 通用产品工厂功能域",
+      "kicker": "用户能做什么",
+      "summary": "ToonFlow 的领域功能应被替换为通用产品生命周期能力，而不是逐字段映射。",
+      "blocks": [
+        {"type":"table","title":"ToonFlow 模式到通用产品工厂的映射","columns":["ToonFlow 已确认模式","AI 产品工厂对应能力","不应迁移的内容","依据"],"rows":[
+          ["一句话/小说导入","一句话产品创意、PRD 或现有仓库导入","小说章节和事件业务字段","E-TOON-WEB-001 / E-USER-001"],
+          ["ScriptAgent 工作区","Product Design Workspace：需求事实、产品画像、PRD、领域模型、技术适配、架构蓝图","故事骨架、改编策略、剧本","E-TOON-SRC-001 / D-GENERIC-001"],
+          ["ProductionAgent 工作区","Product Production Workspace：开发计划、任务 DAG、代码、页面、测试、验收和发布候选","角色/场景/分镜/视频节点","E-TOON-UI-001 / D-GENERIC-001"],
+          ["资产中心","Product Artifact Center：文档、schema、代码、UI、配置、测试、运行地址、证据","媒体资产专用分类","E-TOON-DATA-001"],
+          ["无限画布","Product Production Map：模块、依赖、任务、产物、状态、失效范围","影视节点语义","E-TOON-UI-001"],
+          ["模型供应商中心","Model/Tool/Runtime Registry：模型、代码工具、浏览器、Git、测试、构建、部署适配器","媒体供应商特例","E-TOON-GATEWAY-001 / E-LOCAL-003"],
+          ["监督 Agent","Design Review、Implementation Review、GoalGate 与人工验收","影视质检标准","E-TOON-SRC-001 / E-MANUAL-001"]
+        ]},
+        {"type":"cards","title":"面向用户的七个工作区","items":[
+          {"title":"创意入口","text":"一句话描述想做什么，也可导入 PRD、参考链接、截图或现有仓库。","level":"recommended","meta":"D-GENERIC-001"},
+          {"title":"产品设计工作区","text":"左侧对话，右侧同步形成可编辑的产品定义、流程、范围和架构产物。","level":"recommended","meta":"E-TOON-UI-001"},
+          {"title":"生产地图","text":"查看模块、任务、依赖、当前工位、阻塞、已确认版本和受影响范围。","level":"recommended","meta":"E-TOON-UI-001"},
+          {"title":"产品资产中心","text":"统一浏览需求、文档、代码、页面、数据、测试、证据和发布候选。","level":"recommended","meta":"E-TOON-DATA-001"},
+          {"title":"运行与任务中心","text":"查看 Agent、模型、工具、Worker、重试、中断、恢复和用量。","level":"recommended","meta":"E-TOON-GATEWAY-001 / E-LOCAL-003"},
+          {"title":"真实体验台","text":"直接打开产品、执行验收步骤、记录问题并创建局部修复生产单。","level":"recommended","meta":"E-MANUAL-001 / E-LOCAL-002"},
+          {"title":"发布候选中心","text":"生成上线方案、材料检查和手工发布清单，明确未执行发布。","level":"confirmed","meta":"E-LOCAL-004"}
+        ]}
+      ]
+    },
+    {
+      "id": "end-to-end-flow",
+      "title": "4. 一句话到产品的端到端五流",
+      "kicker": "不是一次 Prompt，而是生产系统",
+      "summary": "一句话启动后，用户流、控制流、Agent/工具流、产物状态流和失败恢复流并行推进。",
+      "blocks": [
+        {"type":"table","title":"端到端五流","columns":["阶段","用户流","控制流","Agent/工具流","数据与状态","失败与恢复"],"rows":[
+          ["创意摄入","输入“做一个外卖助手”或导入资料","创建 Product Thread，识别重大缺项","Design Agent 提取目标、用户、任务、终端、约束","Idea、Source、ProductBrief 草稿","保留原输入；只询问重大缺口"],
+          ["产品定义","查看并修改产品画像和核心流程","固定 SOP 生成版本并等待确认","模型生成，确定性 schema 校验","Requirement/PRD/Decision/Confirmation","修改后只失效依赖产物"],
+          ["架构蓝图","确认产品方案和实现范围","BlueprintCompiler 生成任务图和闸门","Design Agent + 技术知识 + 仓库检查","DomainModel/Architecture/Blueprint","证据不足返回设计节点"],
+          ["真实生产","查看任务、产物和运行状态","Runtime Core 选择工位，Harness 阶段内行动","Agent 调用文件、Git、命令、测试、浏览器","Run/Task/ToolCall/Artifact/Evidence","checkpoint 恢复、幂等重试、中断"],
+          ["真实验收","打开产品并反馈","GoalGate 先自动检查，再请求人工决定","测试与浏览器工具提供证据","Evaluation/Issue/FixOrder/Approval","退回精确模块而非全量重做"],
+          ["正式终端","确认视觉和目标设备体验","按手册选择一个主要终端","前端生产与真实联调","UIArtifact/Build/BrowserEvidence","失败回到相关页面或接口"],
+          ["发布候选","确认上线方案与材料","G9 只生成候选和手工清单","确定性 readiness 检查","ReleasePlan/Checklist/Candidate","证据缺失停止；不自动发布"]
+        ]},
+        {"type":"mermaid","title":"一句话做产品主任务流","caption":"ToonFlow 的顺序生产体验被抽象为产品定义、产品生产和真实验收；D-GENERIC-001 为推荐设计。","code":"flowchart LR\n  A[一句话产品创意 E-USER-001] --> B[Product Brief D-GENERIC-001]\n  B --> C{重大信息足够?}\n  C -- 否 --> D[只询问影响目标/成本/安全的问题]\n  D --> B\n  C -- 是 --> E[需求事实与 PRD]\n  E --> F{用户确认产品定义?}\n  F -- 修改 --> E\n  F -- 确认 --> G[领域模型与架构蓝图]\n  G --> H{用户确认生产方案?}\n  H -- 修改 --> G\n  H -- 确认 --> I[Runtime Core 启动生产 E-LOCAL-003]\n  I --> J[代码/页面/数据/测试产物]\n  J --> K{自动证据达标?}\n  K -- 否 --> L[创建局部修复单]\n  L --> I\n  K -- 是 --> M{用户真实验收?}\n  M -- 退回 --> L\n  M -- 通过 --> N[正式终端与发布候选 E-LOCAL-004]"}
+      ]
+    },
+    {
+      "id": "product-task-graph",
+      "title": "5. 产品任务图与节点合同",
+      "kicker": "每一步都有产物和出口",
+      "summary": "ToonFlow 的价值不只是多个 Agent，而是每个阶段形成可继续操作的结构化对象；通用工厂也必须这样设计。",
+      "blocks": [
+        {"type":"table","title":"关键节点合同","columns":["节点","入口与目标","执行者","结构化写入","确认/退出条件","恢复"],"rows":[
+          ["P1 解释一句话","原始创意；形成可继续生产的 Product Brief","Product Design Role","目标用户、核心任务、结果、终端、约束、未知","重大未知已询问或采用显式默认","回到原输入，不丢用户内容"],
+          ["P2 形成产品定义","Brief 已可用；明确做什么和不做什么","Design Role + 确定性模板","需求事实、用户流、范围、验收标准、PRD","用户确认特定版本","修改产生新版本并使下游 stale"],
+          ["P3 编译生产蓝图","产品定义确认；决定怎样生产","BlueprintCompiler + Design Role","领域模型、组件选择、七层架构、任务 DAG、闸门","蓝图 schema/风险/手册检查通过且用户确认","只重编受影响章节"],
+          ["P4 执行工位","蓝图节点 eligible；产生真实产品资产","Runtime Core + FactoryHarness","代码、页面、数据迁移、配置、命令和运行记录","工具结果写回并通过该节点验证","checkpoint、有限重试、人工授权"],
+          ["P5 自动质量","工位产物存在；判断是否可交人工验收","GoalGate/测试/浏览器","测试报告、构建、截图、运行 URL、Evidence","结果存在、状态一致、证据完整","失败生成精确修复单"],
+          ["P6 人工验收","自动质量通过；判断产品是否真的好用","产品负责人","验收决定、反馈、缺陷、影响范围","确认特定候选版本","退回相应工位，保留已通过产物"],
+          ["P7 发布候选","正式产品已确认；准备人工发布","Release Workflow","上线方案、材料检查、回滚和手工清单","候选证据齐全且明确 deploymentStarted=false","缺证据则停止，不自动发布"]
+        ]},
+        {"type":"callout","level":"recommended","title":"关键产品原则","text":"一句话只负责降低启动门槛，不负责绕过定义、验证和确认。用户不必先写 PRD，但工厂内部仍必须生成并持久化可审查的 PRD、架构和生产蓝图。D-GENERIC-001"}
+      ]
+    },
+    {
+      "id": "agent-contracts",
+      "title": "6. Agent 与角色合同",
+      "kicker": "借鉴双主线，避免 Agent 爆炸",
+      "summary": "首版应把 ToonFlow 的 ScriptAgent/ProductionAgent 抽象成两个角色工作区，可由同一 Factory Agent Runtime 以不同合同运行。",
+      "blocks": [
+        {"type":"table","title":"推荐的运行角色","columns":["角色","目标与触发","六类输入摘要","允许调用","五类输出摘要","完成边界"],"rows":[
+          ["Product Design Role","收到一句话/PRD，负责把产品想清楚","当前指令；用户已确认偏好；项目资料；上游 Brief；三手册/模板；检查结果","读取资料、浏览器研究、结构化生成、写设计产物","对话说明；设计工作区状态；PRD/领域/架构产物；Context 写入；蓝图交接","不能写生产代码或自批 G1–G5"],
+          ["Product Production Role","蓝图已确认，负责把产品做出来","当前反馈；权限/预算；已确认蓝图；设计产物；代码/组件知识；工具结果","文件、补丁、Git、命令、测试、浏览器、构建","运行摘要；任务状态；代码/UI/数据产物；Evidence；下一修复/验收任务","不能自行改产品范围或宣布完成"],
+          ["Review/Supervision Role","设计或生产产物待检查","验收标准、版本、上游产物、手册规则、工具证据、已知问题","只读审查、测试、浏览器检查、结构化评估","问题清单；证据；严重级别；修复范围；GoalGate 输入","不能替代真实工具结果或产品负责人体验"],
+          ["ProductionController","用户决定或生命周期事件发生","项目状态、版本、确认、Protocol Event、权限、运行结果","确定性状态转换，不调用模型做权限决定","事实状态、下一工位、拒绝原因、事件、用户动作","唯一拥有阶段和人工闸门转换"],
+          ["Runtime Core","Turn 启动、恢复、中断或结束","Thread/Turn、Handler、命令、事件序列、工具结果、验证器","注册 Handler、Provider/Tool 适配器","Protocol Event、checkpoint、终态、错误、恢复位置","唯一应用 Turn 终态；E-LOCAL-003"]
+        ]},
+        {"type":"callout","level":"recommended","title":"首版不要部署一支虚构公司","text":"产品、架构、前端、后端、测试等可以先作为同一个 Factory Agent 的阶段角色与 Skill，而不是立刻拆成长期自治 Agent。只有真实试产证明上下文、并发或专业质量需要时，再拆独立 Agent/Subagent。U-GENERIC-001"},
+        {"type":"mermaid","title":"角色—工具—状态数据流","caption":"所有角色共享现有 Protocol/Runtime，不形成第二套 Agent 编排。","code":"flowchart TB\n  U[产品负责人 E-USER-001] --> DW[Product Design Role D-GENERIC-001]\n  U --> PC[ProductionController E-LOCAL-001]\n  DW --> PA[(Product Artifacts)]\n  PA --> BC[BlueprintCompiler]\n  BC --> PC\n  PC --> RC[Runtime Core E-LOCAL-003]\n  RC --> PW[Product Production Role D-GENERIC-001]\n  PW --> TG[ToolGateway E-LOCAL-002]\n  TG --> FILE[文件/Git/命令]\n  TG --> TEST[测试/构建/浏览器]\n  TG --> MODEL[Pi Agent/Model Provider]\n  FILE --> EV[(Artifact & Evidence)]\n  TEST --> EV\n  MODEL --> EV\n  EV --> REVIEW[Review / GoalGate]\n  REVIEW --> PC\n  PC -->|等待确认| U"}
+      ]
+    },
+    {
+      "id": "tools-models",
+      "title": "7. 工具、模型与执行合同",
+      "kicker": "从媒体供应商网关抽象为产品生产网关",
+      "summary": "ToonFlow 的统一供应商层应扩展为通用 Model/Tool/Runtime Registry，并继续受 ToolGateway 约束。",
+      "blocks": [
+        {"type":"table","title":"生产能力合同","columns":["能力","调用者","输入与前置","成功写回","验证","失败/取消"],"rows":[
+          ["语言模型/Agent Provider","Design/Production Role","版本化 Prompt、上下文预算、模型配置、任务 schema","结构化草稿、计划或工具请求；记录模型/耗时/用量","schema、业务规则、真实结果验证","有限重试、降级或 waiting_user"],
+          ["Workspace/File/Patch","Production Role","目标工作区、路径策略、expected version、权限","文件版本、diff、Artifact 引用","文件存在、路径合规、内容/格式检查","补丁冲突不覆盖；可回滚"],
+          ["Git","Production Role","仓库边界、允许命令、当前状态","diff/commit/ref 证据（按阶段）","工作树、目标分支和变更范围核对","禁止未经授权 push/reset/clean"],
+          ["Command/Test/Build","Production Role/GoalGate","受控命令、超时、工作目录、环境","exit code、日志摘要、报告和构建产物","不可用文字替代真实退出码与产物","超时终止；失败进入修复单"],
+          ["Browser","GoalGate/用户验收","真实运行地址、验收步骤、目标宽度","页面状态、截图、Console/Network 证据","主链、异常、刷新、响应式","失败定位到页面/API/状态"],
+          ["Blueprint/Template Registry","Design Role","产品画像、已确认需求、适配规则","能力选择、任务 DAG、闸门和技术适配","schema、依赖、范围和手册一致性","无法安全默认时询问用户"],
+          ["Release Readiness","Release Workflow","产品候选、测试、验收、回滚和未执行项","发布方案、检查结果、手工清单","缺一项即失败","不执行真实发布；E-LOCAL-004"]
+        ]},
+        {"type":"callout","level":"recommended","title":"模型和工具的选择逻辑","text":"模型负责概率判断和生成，工具负责真实副作用与结果，Runtime Core 负责生命周期，ProductionController 负责阶段，GoalGate 负责证据判定。任何一层都不能越权替代另一层。"}
+      ]
+    },
+    {
+      "id": "state-data",
+      "title": "8. 状态、事实源与版本",
+      "kicker": "聊天不是数据库，页面不是状态机",
+      "summary": "一句话产品工厂要像 ToonFlow 一样保存结构化工作区，但必须使用现有 Runtime Core 进一步保证终态、恢复和证据一致。",
+      "blocks": [
+        {"type":"table","title":"状态与事实源","columns":["上下文/库","内容","事实源","版本/失效规则","证据/设计"],"rows":[
+          ["Product Thread","一台产品的长期生产上下文","Protocol Thread + ProductProject","保持身份稳定；产品目标重大变更生成新定义版本","E-LOCAL-003"],
+          ["Production Turn","一个工位的一次生产尝试","Runtime Core + ProductionRun","每次尝试独立，终态不可由 UI 猜测","E-LOCAL-003"],
+          ["Product Definition","Brief、需求、PRD、验收标准","Product Artifact Store","不可变版本 + active 指针；确认绑定版本","D-GENERIC-001"],
+          ["Production Blueprint","领域、架构、能力、任务 DAG、闸门","Blueprint Store/Compiler","上游定义变化后重算影响并 stale","E-LOCAL-001"],
+          ["Task/Invocation","queued/running/waiting/succeeded/failed/cancelled","Runtime/Records","稳定调用键、attempt、lease、checkpoint","E-LOCAL-003"],
+          ["Product Artifact","文档、代码、UI、数据库、配置、构建、URL","Artifact Store + workspace/git refs","producer、version、lineage、status、consumers","D-GENERIC-001"],
+          ["Evidence/Evaluation","测试、浏览器、模型冒烟、审查、人工结果","ProductionRecord","证据绑定 artifact/run/version；过期即不可用于完成","E-MANUAL-001 / E-LOCAL-002"],
+          ["Confirmation/Decision","采用、修改、拒绝、重大影响决定","ProductionController","subject+version+actor+time；重复确认幂等","E-LOCAL-001"],
+          ["Conversation","用户指令、解释和运行摘要","Conversation/Event Store","可检索但不替代确认产物和状态","E-TOON-UI-001"]
+        ]},
+        {"type":"mermaid","title":"通用产品生产状态机","caption":"UI 动画、模型停输出或 SSE 断线都不能改变事实终态。","code":"stateDiagram-v2\n  [*] --> Idea\n  Idea --> Defining: 创建 Product Thread\n  Defining --> WaitingDefinitionApproval: 产品定义可确认\n  WaitingDefinitionApproval --> Defining: 修改\n  WaitingDefinitionApproval --> Designing: 确认版本\n  Designing --> WaitingBlueprintApproval: 蓝图可确认\n  WaitingBlueprintApproval --> Designing: 修改\n  WaitingBlueprintApproval --> Queued: 确认并创建生产 Turn\n  Queued --> Running: Handler 获得执行权\n  Running --> WaitingUser: 需要授权/补充/体验决定\n  WaitingUser --> Running: 决定后恢复\n  Running --> Validating: 真实产物写入\n  Validating --> Failed: 证据不达标\n  Failed --> Queued: 创建局部修复 Turn\n  Validating --> WaitingAcceptance: 自动质量通过\n  WaitingAcceptance --> Queued: 用户退回\n  WaitingAcceptance --> Candidate: 用户确认+发布材料齐全\n  Running --> Interrupted: 用户中断\n  Interrupted --> Queued: 从 checkpoint 恢复\n  Candidate --> [*]"}
+      ]
+    },
+    {
+      "id": "events",
+      "title": "9. 事件与转移合同",
+      "kicker": "一句话也必须可审计",
+      "summary": "产品定义、工具执行、产物写回、确认和发布候选都应进入版本化 Protocol Event。",
+      "blocks": [
+        {"type":"table","title":"核心事件目录","columns":["事件","发起者/处理者","前置和幂等","写入与下一状态","失败路径"],"rows":[
+          ["product.idea_submitted","用户/ProductionController","用户+requestKey","创建 Product Thread、保存原始 Idea","重复提交返回现有 Thread"],
+          ["product.brief_created","Design Role/Artifact Service","ideaVersion+schemaVersion","ProductBrief draft，进入定义工作区","校验失败保留草稿"],
+          ["artifact.version_confirmed","用户/ProductionController","subjectVersion 为 active 且未 stale","Confirmation，解锁下一节点","版本冲突要求刷新"],
+          ["blueprint.compiled","BlueprintCompiler/ProductionController","已确认 definitionVersion","BlueprintVersion、Task DAG、Gate","不完整则不创建生产 Turn"],
+          ["turn.started","Runtime Core","threadId+turnId+handler+idempotencyKey","Protocol Event、running、checkpoint base","已有同键返回既有 Turn"],
+          ["tool.call_completed","ToolGateway/Runtime Core","callKey+expectedState+权限","ToolResult、Artifact/Evidence、用量","部分写回不得完成节点"],
+          ["goal.evaluated","GoalGate/ProductionController","产物、状态、测试、浏览器和确认一致","continue/failed/waiting_user/complete","缺证据只能 continue/waiting"],
+          ["upstream.artifact_changed","Artifact Service","新 activeVersion","依赖产物 stale、创建影响清单","未知依赖扩大人工复核范围"],
+          ["turn.interrupt_requested","用户/Runtime Command Gateway","当前 Turn 可中断","interrupted+checkpoint","迟到工具结果隔离"],
+          ["release.candidate_created","Release Workflow/ProductionController","产品、测试、体验、回滚、清单齐全","projectStatus=candidate，deploymentStarted=false","缺项失败，不描述为已上线"]
+        ]},
+        {"type":"code","title":"通用 Artifact 确认事件","language":"json","code":"{\n  \"type\": \"artifact.version_confirmed\",\n  \"protocolVersion\": 1,\n  \"threadId\": \"product_project_id\",\n  \"turnId\": \"production_run_id\",\n  \"subject\": {\"artifactId\": \"prd\", \"version\": 3},\n  \"decision\": \"approved\",\n  \"actor\": \"product_owner\",\n  \"idempotencyKey\": \"...\",\n  \"occurredAt\": \"...\"\n}"}
+      ]
+    },
+    {
+      "id": "knowledge-assets",
+      "title": "10. 知识与产品资产",
+      "kicker": "把“素材库”变成“产品事实库”",
+      "summary": "通用工厂的核心资产不是媒体，而是从产品意图到发布候选的完整可追溯产品包。",
+      "blocks": [
+        {"type":"table","title":"Product Artifact 分类","columns":["资产类别","示例","生产者","消费者","版本与权限"],"rows":[
+          ["输入与证据源","一句话、PRD、截图、链接、现有仓库","用户/摄入工具","Design Role","保留原件、来源和敏感级别"],
+          ["产品定义","Product Brief、需求事实、用户流程、范围、验收标准","Design Role","BlueprintCompiler/用户","不可变版本，人工确认 active"],
+          ["设计与架构","领域模型、ADR、技术适配、七层架构、生产蓝图","Design Role/确定性模板","Production Role/Review","上游变化传播 stale"],
+          ["实现资产","代码、schema、migration、组件、Prompt、配置样例","Production Role/工具","测试、构建、运行时","Git/文件版本与 lineage"],
+          ["运行产物","本地地址、构建包、数据库、生成文件、截图","工具/Worker","GoalGate/用户","环境、有效期和访问权限"],
+          ["质量证据","测试、类型、lint、浏览器、真实模型冒烟、缺陷","工具/Review/用户","GoalGate/Release","绑定代码和候选版本"],
+          ["发布资产","上线方案、配置键名、回滚、手工清单、候选版本","Release Workflow","产品负责人/人工发布者","明确未执行项和审批"],
+          ["可复用知识","三手册、组件目录、技术模板、产品类型 Skill","平台管理员","Design/Production Role","版本、适用范围、来源和更新日期"]
+        ]},
+        {"type":"callout","level":"recommended","title":"资产中心的关键交互","text":"用户点击任何产品模块，都能看到它使用了哪个需求版本、由哪个 Turn/工具生成、通过了哪些检查、谁确认、哪些下游依赖它，以及修改后会重做什么。这个能力比单纯展示聊天记录更接近 ToonFlow 的真实价值。"}
+      ]
+    },
+    {
+      "id": "layered-architecture",
+      "title": "11. 七层架构落位",
+      "kicker": "在现有 V0.5 上扩展",
+      "summary": "迁移重点是产品层、交互层和资产投影；Protocol、Runtime Core、Harness 和 Records 继续作为唯一运行底座。",
+      "blocks": [
+        {"type":"table","title":"七层迁移方案","columns":["层","现有 V0.5 保留","从 ToonFlow 模式迁入","明确不做"],"rows":[
+          ["1 交互层","Next.js 对话式 Web 控制台、任务状态、确认与 SSE","Product Design Workspace、Product Production Map、Artifact Center、真实体验台","复制 ToonFlow UI 或影视术语"],
+          ["2 产品层","ProductFactory、ProductionController、BlueprintCompiler、G1–G9","一句话 Idea→Brief 投影、通用 Artifact 类型、影响分析","在控制器硬编码外卖/游戏等领域字段"],
+          ["3 Agent/编排层","Runtime Core、FactoryHarness、Handler Registry、GoalGate","Design/Production/Review 三类角色合同和工作区投影","另建第二套 Agent Loop"],
+          ["4 模型层","Pi Agent + DeepSeek Provider Adapter","按角色加载 Prompt/Skill/上下文和模型路由记录","模型拥有阶段或完成状态"],
+          ["5 能力集成层","ToolGateway、Workspace、Git、命令、测试、浏览器","Tool/Template/Runtime Registry 与可发现能力描述","供应商脚本绕过权限"],
+          ["6 数据层","SQLite、Protocol Event、Artifact/Evidence、JSONL Session","Product Definition/Artifact/Lineage/Confirmation 投影和搜索","把聊天当唯一产品记录"],
+          ["7 基础设施层","本地优先 Web+Worker、备份、日志、发布候选构建","未来多仓库/多运行环境适配，但按真实需求触发","提前引入微服务、远程队列或多租户"]
+        ]},
+        {"type":"callout","level":"recommended","title":"最小迁移面","text":"第一阶段不重写 Runtime Core，不重构 G1–G9，不更换 Pi Agent，也不新增实际发布。先增加 Idea/Brief 与通用 Artifact 投影，再把现有工位结果组织成 ToonFlow 式双工作区。"}
+      ]
+    },
+    {
+      "id": "entity-model",
+      "title": "12. 通用产品实体与血缘",
+      "kicker": "一台产品是一条可追溯产品链",
+      "summary": "实体从产品意图一路连接到发布候选，任何产物都能回溯输入、生产 Turn 和验证证据。",
+      "blocks": [
+        {"type":"table","title":"核心实体","columns":["实体","身份/关键字段","生产者","消费者与失效"],"rows":[
+          ["ProductProject/Thread","productId、目标、状态、activeDefinition","用户/ProductionController","所有生产；重大目标变化生成新定义版本"],
+          ["ProductIdea/Source","原始文本、附件、来源、hash","用户/摄入工具","ProductBrief；源变化使引用产物待复核"],
+          ["ProductDefinitionVersion","Brief、需求、流程、范围、验收","Design Role","Blueprint；新 active 使旧 Blueprint stale"],
+          ["BlueprintVersion","领域、架构、能力、Task DAG、Gate","BlueprintCompiler","Production Turn；随 Definition 失效"],
+          ["ProductionRun/Turn","stage、handler、state、attempt、checkpoint","Runtime Core","ToolCall/Artifact/Evidence"],
+          ["ProductArtifactVersion","kind、uri/ref、producer、parent、status、metadata","Agent/Tool","下游任务、UI、GoalGate；上游变化 stale"],
+          ["ToolCall/ModelInvocation","callKey、输入引用、结果、耗时、用量、error","ToolGateway/Provider","Evidence/审计/恢复"],
+          ["Evidence/Evaluation","subjectVersion、check、result、location","测试/浏览器/Review/用户","GoalGate/Release；过期不可复用"],
+          ["Confirmation/Decision","subjectVersion、actor、decision、time","用户/ProductionController","解锁下一节点；幂等"],
+          ["ReleaseCandidate","artifact set、checks、rollback、deploymentStarted","Release Workflow","人工发布；不等于 released"]
+        ]},
+        {"type":"mermaid","title":"通用产品血缘 ER 图","caption":"推荐实体建立在现有 Project/Run/Event/Artifact/Evidence 之上，不要求推倒当前 schema。","code":"erDiagram\n  PRODUCT_PROJECT ||--o{ PRODUCT_SOURCE : receives\n  PRODUCT_PROJECT ||--o{ PRODUCT_DEFINITION_VERSION : defines\n  PRODUCT_DEFINITION_VERSION ||--o{ CONFIRMATION : approved_by\n  PRODUCT_DEFINITION_VERSION ||--o{ BLUEPRINT_VERSION : compiles\n  BLUEPRINT_VERSION ||--o{ PRODUCTION_RUN : schedules\n  PRODUCTION_RUN ||--o{ TOOL_CALL : invokes\n  PRODUCTION_RUN ||--o{ PRODUCT_ARTIFACT_VERSION : produces\n  PRODUCT_ARTIFACT_VERSION }o--o{ PRODUCT_ARTIFACT_VERSION : depends_on\n  PRODUCT_ARTIFACT_VERSION ||--o{ EVIDENCE : verified_by\n  PRODUCTION_RUN ||--o{ CHECKPOINT : recovers_from\n  PRODUCT_PROJECT ||--o{ RELEASE_CANDIDATE : yields\n  RELEASE_CANDIDATE }o--o{ PRODUCT_ARTIFACT_VERSION : packages\n  RELEASE_CANDIDATE ||--o{ CONFIRMATION : approved_by"}
+      ]
+    },
+    {
+      "id": "sequence",
+      "title": "13. 一句话做产品时序",
+      "kicker": "以“外卖助手”为例",
+      "summary": "同一条链也适用于游戏助手或其他数字产品；差异进入 Product Definition 和 Blueprint，而不是工厂内核分支。",
+      "blocks": [
+        {"type":"mermaid","title":"从创意到发布候选的完整时序","caption":"包含澄清、确认、生产、失败修复、中断恢复和候选交付。","code":"sequenceDiagram\n  actor U as 产品负责人\n  participant UI as 双工作区 WebUI\n  participant PC as ProductionController\n  participant D as Product Design Role\n  participant RC as Runtime Core\n  participant P as Product Production Role\n  participant TG as ToolGateway\n  participant R as Records/Artifacts\n  participant G as GoalGate\n  U->>UI: “做一个帮我选餐和下单的外卖助手”\n  UI->>PC: product.idea_submitted\n  PC->>D: 创建 Product Brief\n  D->>R: 保存目标/用户/流程/未知\n  alt 存在重大未知\n    D-->>U: 询问目标终端、是否真实下单、预算/数据边界\n    U->>D: 补充决定\n  end\n  D->>R: PRD/领域/架构/蓝图草稿\n  R-->>UI: 右侧结构化预览\n  U->>PC: 确认特定蓝图版本\n  PC->>RC: 启动 Production Turn\n  RC->>P: 按 Handler 执行工位\n  P->>TG: 文件/补丁/命令/测试/浏览器请求\n  TG->>R: 写代码、产物、工具结果和证据\n  alt 工具失败或验证不通过\n    G-->>PC: continue/failed + 精确缺口\n    PC->>RC: 创建局部修复 Turn\n  else 用户中断\n    U->>RC: interrupt command\n    RC->>R: interrupted + checkpoint\n    U->>RC: resume\n  else 自动质量通过\n    G-->>U: 打开真实产品并按清单验收\n    alt 用户退回\n      U->>PC: 问题+影响范围\n      PC->>RC: 局部修复 Turn\n    else 用户通过\n      PC->>R: ReleaseCandidate + 手工发布清单\n      R-->>U: 发布候选，未实际部署\n    end\n  end"}
+      ]
+    },
+    {
+      "id": "panorama",
+      "title": "14. 总体架构全景",
+      "kicker": "ToonFlow 体验范式 + Codex 式运行底座",
+      "summary": "前台像 ToonFlow 一样围绕产品产物协作，后台继续由现有 Protocol/Runtime/Harness 提供可控制、可恢复、可验证的生产。",
+      "blocks": [
+        {"type":"mermaid","title":"一句话 AI 产品工厂全景","caption":"实线为现有已确认底座，点线为推荐的 ToonFlow 式通用产品工作区与资产投影。","code":"flowchart TB\n  subgraph UX[交互与产品工作区]\n    IDEA[一句话创意入口 D-GENERIC-001]\n    DESIGN[Product Design Workspace D-GENERIC-001]\n    MAP[Production Map / Artifact Center D-GENERIC-001]\n    ACCEPT[真实体验与发布候选 E-LOCAL-004]\n  end\n  subgraph CONTROL[产品控制面]\n    PF[ProductFactory]\n    PC[ProductionController E-LOCAL-001]\n    BC[BlueprintCompiler]\n  end\n  subgraph RUNTIME[协议与运行核心]\n    PROTO[Protocol Thread/Turn/Event E-LOCAL-003]\n    RC[Runtime Core E-LOCAL-003]\n    HR[Handler Registry]\n    FH[FactoryHarness E-LOCAL-002]\n    GG[GoalGate]\n  end\n  subgraph EXEC[模型与能力执行]\n    AGENT[Pi Agent / Role Config]\n    TG[ToolGateway]\n    TOOLS[Workspace Git Command Test Browser]\n    PROVIDER[Model Provider Adapter]\n  end\n  subgraph DATA[事实与知识]\n    RECORD[(SQLite ProductionRecord)]\n    ART[(Product Artifacts / Lineage D-GENERIC-001)]\n    EV[(Evidence / Confirmation)]\n    KNOW[(三手册 / Skill / Templates)]\n  end\n  subgraph INFRA[基础设施与治理]\n    WORKER[Web + Worker / Checkpoint]\n    BACKUP[Backup / Logs / Sentry]\n    POLICY[Auth / Permission / Budget / Safety]\n  end\n  IDEA -.-> DESIGN\n  DESIGN -.结构化定义.-> PF\n  PF --> PC\n  PC --> BC\n  BC --> PROTO\n  PROTO --> RC\n  RC --> HR\n  HR --> FH\n  FH --> AGENT\n  AGENT --> TG\n  TG --> TOOLS\n  AGENT --> PROVIDER\n  TOOLS --> ART\n  PROVIDER --> ART\n  RC --> RECORD\n  ART --> EV\n  EV --> GG\n  GG --> PC\n  RECORD -.投影.-> MAP\n  ART -.预览.-> MAP\n  PC -.确认/验收.-> ACCEPT\n  KNOW --> AGENT\n  WORKER --> RC\n  BACKUP --> RECORD\n  POLICY --> PC\n  POLICY --> TG"},
+        {"type":"list","title":"架构读法","items":["ToonFlow 式体验主要落在上方的 Design Workspace、Production Map 和 Artifact Center。","现有 Protocol、Runtime Core、ProductionController、FactoryHarness 和 ToolGateway 继续是唯一控制与执行内核。","目标产品差异只进入 Product Definition、Blueprint、Skill 和所选工具，不进入通用控制器字段。","用户看到的是状态、产物、证据和下一步，不展示隐藏推理。"]}
+      ]
+    },
+    {
+      "id": "as-is-to-be",
+      "title": "15. As-Is → To-Be 与实施路线",
+      "kicker": "从已有流水线升级为一句话产品工作台",
+      "summary": "当前工厂已经拥有可靠运行骨架；下一步重点是缩短创意入口、增强产物工作区、通用资产血缘和真实试产。",
+      "blocks": [
+        {"type":"table","title":"当前与目标严格分离","columns":["视图","当前事实/目标设计","不能混淆","依据"],"rows":[
+          ["ToonFlow As-Is","短剧领域内的两条 Agent 主线、结构化工作区、画布、资产、任务和供应商适配","官网五步不是通用软件工厂","E-TOON-*"],
+          ["AI 工厂 As-Is V0.5","一句话/PRD 入口、产品画像、蓝图、G1–G9、真实 Harness、WebUI、Protocol/Runtime Core、发布候选","尚未证明能稳定生产多种完整产品","E-LOCAL-*"],
+          ["To-Be recommended","ToonFlow 式双工作区 + 通用 Product Artifact/Lineage + Production Map + 两类角色合同","不是短剧能力包，也不是复制 ToonFlow 源码","E-USER-001 / D-GENERIC-001"],
+          ["Unknown","一句话补全质量、不同产品类型覆盖率、画布收益、成本和单 Agent 上限","需要真实试产，不能写成已完成","U-GENERIC-001"]
+        ]},
+        {"type":"table","title":"五阶段实施路线","columns":["阶段","要完成什么","真实验收出口","不做"],"rows":[
+          ["A 一句话接单","新增 Idea→ProductBrief 合同；自动采用低风险默认，只询问重大问题；在设计工作区右侧实时生成结构化产品定义","用“外卖助手”和“游戏助手”两句输入都生成可编辑、可确认、差异明确的 Brief/PRD","不生产代码，不建画布"],
+          ["B ToonFlow 式产品设计工作区","左对话右产物；需求事实、用户流、PRD、领域模型、技术适配、架构与蓝图按版本切换；展示确认和 stale","刷新后恢复；修改需求只失效相关蓝图；确认绑定版本","不拆多 Agent 团队"],
+          ["C 通用生产地图与资产中心","把现有 Run/Event/Artifact/Evidence 投影为模块、任务、依赖、产物和证据；支持局部修复单","任意代码/页面/测试可追到需求、Turn、工具结果和确认；上游修改显示影响范围","不引入复杂实时协作画布"],
+          ["D 两条真实纵向试产线","选两个差异明显的产品：一个工具型外卖助手、一个交互型游戏助手；从一句话做到真实运行、测试、浏览器验收和发布候选","两条链均有真实模型、真实工具、真实产品和人工验收；失败/中断/刷新可恢复","不追求支持所有产品类型"],
+          ["E 通用化与产品化","从两次试产提炼模板、Skill、能力触发规则和回归集；再决定是否拆 Agent、加 Memory、队列或更多终端","第三种产品无需修改工厂内核即可完成生产；回归不破坏前两条路线","不凭设想预装复杂平台能力"]
+        ]},
+        {"type":"callout","level":"recommended","title":"最重要的下一阶段","text":"先实施 A+B：让用户真正可以只说一句话，并在同一个页面看到 AI 把它逐步变成 Product Brief、PRD 和架构蓝图。这是最接近 ToonFlow 核心体验、又最少触碰现有运行内核的一步。"}
+      ]
+    },
+    {
+      "id": "exceptions-recovery",
+      "title": "16. 异常、修改与恢复",
+      "kicker": "一句话降低门槛，不能降低可靠性",
+      "summary": "模糊输入、错误默认、需求变化、工具失败和假完成是通用产品工厂的主要异常。",
+      "blocks": [
+        {"type":"table","title":"异常恢复矩阵","columns":["异常","检测与用户反馈","状态/副作用","恢复或补偿","优先级"],"rows":[
+          ["一句话过于模糊","缺少目标用户/核心结果且无法安全默认","停在 Defining，不执行收费生产","展示当前理解，只问 1–3 个重大问题","P1"],
+          ["AI 采用了错误默认","用户修改 Product Brief","新定义版本；下游 stale","影响分析后只重编相关蓝图","P1"],
+          ["需求与现有代码冲突","仓库检查发现不兼容","不静默覆盖已有功能","生成冲突、推荐裁决和迁移影响","P1"],
+          ["模型返回格式错误","schema/解析器失败","不写 active Artifact","宽容解析+有限重试+统一错误","P1"],
+          ["工具成功但写回失败","外部结果存在、Records 缺失","partial，不推进 GoalGate","按 callKey 补写或隔离结果","P0/P1"],
+          ["Agent 自述完成但无产物","CompletionVerifier 对账失败","continue/failed","显示缺什么文件、运行或证据","P0"],
+          ["用户中断运行","Protocol command 记录 interrupt","Turn=interrupted；已发生副作用保留","从 checkpoint 恢复，不重复工具调用","P1"],
+          ["SSE 断开或页面刷新","前端连接丢失","后端状态不改变","按 Thread/Turn/Event sequence 恢复","P1"],
+          ["上游产物变更","Artifact lineage 发现 version mismatch","依赖产物 stale","生成精确影响清单和局部修复单","P1"],
+          ["发布材料缺失","Readiness 确定性检查失败","不创建 candidate，不执行发布","回到缺失证据对应工位","P0/P1"]
+        ]},
+        {"type":"callout","level":"recommended","title":"修改体验应像编辑产品，不像重新聊天","text":"用户改“外卖助手暂时不真实下单，只给推荐”时，系统应生成新 Product Definition，明确哪些 API、权限、页面和测试不再需要，并局部重编蓝图，而不是让用户从头解释一遍。"}
+      ]
+    },
+    {
+      "id": "risks",
+      "title": "17. 风险与优先级",
+      "kicker": "先防止“看起来能做产品”",
+      "summary": "最大的风险不是界面不像 ToonFlow，而是产品定义错误、产物不可追溯、假完成和过早复杂化。",
+      "blocks": [
+        {"type":"table","title":"优先风险清单","columns":["ID/级别","风险","证据或原因","缓解","验证"],"rows":[
+          ["R-SCOPE-001 / P0","再次把参考产品的领域能力写进工厂内核","本轮需求纠偏 E-USER-001","建立通用 Artifact/Blueprint 合同；领域只进入目标产品定义","外卖与游戏共用内核且无短剧字段"],
+          ["R-COMPLETE-001 / P0","把 Agent 文本、SSE 结束或构建成功当作产品完成","E-MANUAL-001 / E-LOCAL-002","GoalGate 对账运行、产物、测试、浏览器和人工确认","缺任一证据不能 candidate"],
+          ["R-INTENT-001 / P1","一句话被错误扩写成用户没要的产品","模糊输入的天然风险","显式 Product Brief、默认值来源、重大问题确认和版本修改","用户能在生产前发现并修正"],
+          ["R-DUAL-TRUTH-001 / P1","聊天、右侧产物、Blueprint 和 Runtime 状态不一致","ToonFlow 式多表面风险","结构化 Artifact 为事实，UI 全部投影同一版本和 Event","刷新/多页面状态一致"],
+          ["R-LINEAGE-001 / P1","修改需求后继续使用旧代码或旧测试证据","通用依赖链复杂","Artifact lineage、stale 传播、证据版本绑定","修改范围后精确失效"],
+          ["R-AGENT-001 / P1","过早拆成大量自治 Agent，成本和状态爆炸","U-GENERIC-001","首版两种角色配置共享单 Runtime；用试产数据决定拆分","同一 Turn 可解释和恢复"],
+          ["R-UX-001 / P2","复制无限画布但没有真实任务价值","参考 UI 容易诱发模仿","先做列表/依赖投影，验证后再升级画布","用户完成任务更快且不丢状态"],
+          ["R-SEC-001 / P0","工具、密钥、外部发送或发布越权","三手册强制底线","ToolGateway、服务端 Secret、P0–P3、重大影响确认","越权调用被确定性拒绝"],
+          ["R-LICENSE-001 / P0","直接复制 ToonFlow 受限代码、品牌或资产","E-LICENSE-001","只借鉴公开任务/架构模式；源码复用单独审查授权","交付清单无受限资产"]
+        ]}
+      ]
+    },
+    {
+      "id": "traceability",
+      "title": "18. 追踪、未知与架构验收",
+      "kicker": "可以据此进入下一阶段设计",
+      "summary": "修正版已把 ToonFlow 事实、AI 工厂现状和一句话通用产品设计分离，并给出最小迁移路线。",
+      "blocks": [
+        {"type":"table","title":"关键结论追踪","columns":["结论/组件","ToonFlow 证据","本地/用户证据","设计状态"],"rows":[
+          ["一句话低门槛入口","E-TOON-WEB-001","E-USER-001","迁移为 Product Idea/Brief"],
+          ["产品设计与生产双工作区","E-TOON-UI-001/E-TOON-SRC-001","E-LOCAL-003","两个角色投影，共享一个 Runtime"],
+          ["结构化产物和资产中心","E-TOON-DATA-001","E-MANUAL-001/E-LOCAL-002","通用 Product Artifact/Lineage"],
+          ["任务与供应商/工具中心","E-TOON-GATEWAY-001","E-LOCAL-003","Registry + ToolGateway，不绕过权限"],
+          ["阶段、确认、恢复和终态","—","E-LOCAL-001/E-LOCAL-003","保留 ProductionController/Runtime Core"],
+          ["真实验收与发布候选","—","E-MANUAL-001/E-LOCAL-004","GoalGate + 人工验收 + handoff"],
+          ["不做短剧能力包","—","E-USER-001","范围边界已纠正"]
+        ]},
+        {"type":"table","title":"架构验收门","columns":["标准","结果","说明"],"rows":[
+          ["范围忠实","pass","目标是通用一句话做产品，短剧明确排除"],
+          ["事实与建议分离","pass","ToonFlow As-Is、本地 V0.5 和 To-Be 分栏"],
+          ["主链、修改、失败、中断","pass","任务流、状态机、时序和恢复矩阵覆盖"],
+          ["任务责任与状态事实","pass","Design/Production Role、Controller、Runtime、Tool、GoalGate 边界明确"],
+          ["产物血缘和确认","pass","Definition→Blueprint→Run→Artifact→Evidence→Candidate 可追溯"],
+          ["安全、成本和发布边界","pass","三手册底线、ToolGateway、发布候选停止点明确"],
+          ["迁移最小化","pass","不重写现有内核，先做 A+B 工作区"],
+          ["未知项隔离","pass","多产品覆盖、Agent 拆分和画布收益交真实试产验证"]
+        ]},
+        {"type":"callout","level":"unknown","title":"进入实现前的四个产品决定","text":"1）第一条真实试产究竟选外卖助手还是已有小游戏；2）一句话入口允许系统采用哪些默认值；3）Product Design Workspace 的第一版产物只到 PRD，还是同时到架构蓝图；4）Production Map 第一版采用任务列表+依赖关系，还是直接做可拖拽画布。建议默认：先外卖助手；低风险默认可自动采用并显示；第一版直接到可确认蓝图；先列表和依赖，不先做拖拽画布。"},
+        {"type":"callout","level":"confirmed","title":"最终对齐结论","text":"AI 产品工厂的目标是把 ToonFlow 的“把创意工业化变成成片”替换成“把产品想法工业化变成可运行产品”。目标产品可以变化，工厂的入口、工作区、控制、执行、产物、证据和验收机制保持通用。E-USER-001"}
+      ]
+    }
+  ]
+}

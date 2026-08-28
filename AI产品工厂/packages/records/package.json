@@ -8,7 +8,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1119.0",
     "@factory/shared": "*",
-    "better-sqlite3": "13.0.3"
+    "better-sqlite3": "^12.4.1"
   }
 }

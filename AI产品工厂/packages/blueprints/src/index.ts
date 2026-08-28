@@ -77,9 +77,23 @@ const baseStages: BlueprintStage[] = [
   },
   {
     id: "release-preparation",
-    title: "发布准备",
-    purpose: "形成发布候选、已知问题和回退方式。",
+    title: "上线方案",
+    purpose: "形成目标环境、配置、发布步骤和回退方式。",
     requiredChecks: ["release-candidate", "rollback-plan"],
+    optional: false
+  },
+  {
+    id: "release-readiness",
+    title: "上线检查",
+    purpose: "核对产品、测试、验收、配置和回滚材料。",
+    requiredChecks: ["artifact-ready", "quality-evidence", "acceptance-evidence", "rollback-plan"],
+    optional: false
+  },
+  {
+    id: "release-handoff",
+    title: "待人工发布",
+    purpose: "生成可由产品负责人执行的发布与回滚清单，工厂不执行发布。",
+    requiredChecks: ["manual-release-checklist", "no-automatic-deployment"],
     optional: false
   }
 ];

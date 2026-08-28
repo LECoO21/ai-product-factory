@@ -4,6 +4,7 @@ import { SqliteProductionRunStore } from "@factory/records";
 import { getProductFactory } from "@factory/production";
 import { RunConsole } from "@/components/run-console";
 import { stageLabels } from "@/lib/labels";
+import { getHarnessView } from "@/lib/harness-server";
 
 export const dynamic = "force-dynamic";
 
@@ -19,11 +20,16 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
     <div className="page">
       <header className="detail-header run-header">
         <Link href={`/projects/${project.id}`} className="back-link">
-          ← 返回 {project.name}
+          ← 返回产品
         </Link>
-        <h1>{stageLabels[run.stage]}</h1>
+        <span className="run-stage-kicker">当前阶段 · {stageLabels[run.stage]}</span>
+        <h1>{project.name}</h1>
       </header>
-      <RunConsole initialRun={run} initialEvents={store.events(run.id)} />
+      <RunConsole
+        initialRun={run}
+        initialEvents={store.events(run.id)}
+        initialHarness={getHarnessView(run.id)}
+      />
     </div>
   );
 }

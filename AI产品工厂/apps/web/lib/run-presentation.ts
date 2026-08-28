@@ -1,6 +1,7 @@
 import {
   getProductPrototype,
   stripProductPrototype,
+  type Evidence,
   type ProductionRun,
   type ProductionStage
 } from "@factory/shared";
@@ -21,6 +22,14 @@ export type StageReviewGuidance = {
   previewHref: string;
   previewLabel: string;
 };
+
+export function getHarnessTestEvidence(evidence: Evidence[]) {
+  const failed = evidence.find((item) => item.kind === "first-test") ??
+    evidence.find((item) => item.criterionId === "CG-06" && !item.passed);
+  const passed = evidence.find((item) => item.kind === "failure-repair-loop") ??
+    evidence.find((item) => item.criterionId === "CG-06" && item.passed);
+  return { failed, passed };
+}
 
 export function getStageReviewGuidance(
   stage: ProductionStage,

@@ -1,6 +1,6 @@
 # 第一阶段生产单｜最小可执行 Harness
 
-> 生产单状态：G6 待产品负责人确认
+> 生产单状态：G6 `approved`（产品负责人于 2026-08-25 确认）
 >
 > 生产单 ID：`PO-V02B-HARNESS-001`
 >
@@ -91,7 +91,7 @@
 3. 实现编号迁移与 records；
 4. 实现 ToolGateway、权限、ManualAuthority 和工具；
 5. 实现 Task、BackgroundRunner、WorkPlan、Artifact、Evidence；
-6. 接入 Pi AgentHarness Adapter 与 FactoryHarness；
+6. 接入 Pi Agent Adapter 与 FactoryHarness；高层 AgentHarness 未实现壳不得作为生产入口；
 7. 接入 Worker 和最小 WebUI；
 8. 跑 mock 自动化闭环并修复；
 9. 跑真实 DeepSeek 冒烟；
@@ -140,11 +140,11 @@ evidence.register
 ```yaml
 provider: deepseek
 model: deepseek-v4-flash
-runtime: "@earendil-works/pi-agent-core AgentHarness 0.84.2"
+runtime: "@earendil-works/pi-agent-core Agent 0.84.2"
 catalog: "@earendil-works/pi-ai 0.84.2"
 thinkingLevel: low
 toolExecution: sequential
-drive: automatic
+drive: "Agent.prompt + sequential tool loop"
 requestTimeoutMs: 90000
 maxRetries: 2
 temperature: provider_default
@@ -194,7 +194,8 @@ retryBudget:
 
 ### AC-02 单一 Agent Loop
 
-- FactoryHarness 使用 Pi `AgentHarness`；
+- FactoryHarness 使用 Pi `Agent` 作为唯一工具循环；
+- 高层 `AgentHarness` 的未实现 `prompt` / Hooks 不得被当成已交付能力；
 - 未实现第二套自定义 while-loop；
 - run、steer、abort 和 terminal outcome 均有统一 Adapter 与测试。
 
@@ -341,14 +342,14 @@ complete =
 
 ## 12. G6 确认
 
-- [ ] objective 正确；
-- [ ] inputs 的权威顺序正确；
-- [ ] constraints 没有漏掉用户数据、手册和危险动作保护；
-- [ ] allowedTools 只覆盖当前阶段；
-- [ ] modelProfile 继续使用 Pi Agent + DeepSeek；
-- [ ] token、费用、时间、步骤和重试预算可以接受；
-- [ ] acceptanceCriteria 和 expectedArtifacts 足以证明真实完成；
-- [ ] humanGatePolicy 符合“普通操作自动、重大动作确认”；
-- [ ] 失败、阻塞、中断和预算耗尽不会被伪装成成功。
+- [x] objective 正确；
+- [x] inputs 的权威顺序正确；
+- [x] constraints 没有漏掉用户数据、手册和危险动作保护；
+- [x] allowedTools 只覆盖当前阶段；
+- [x] modelProfile 继续使用 Pi Agent + DeepSeek；
+- [x] token、费用、时间、步骤和重试预算可以接受；
+- [x] acceptanceCriteria 和 expectedArtifacts 足以证明真实完成；
+- [x] humanGatePolicy 符合“普通操作自动、重大动作确认”；
+- [x] 失败、阻塞、中断和预算耗尽不会被伪装成成功。
 
 产品负责人确认后，本生产单进入 `approved`；确认前保持 `draft`。

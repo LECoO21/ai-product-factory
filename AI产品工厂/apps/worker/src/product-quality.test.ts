@@ -28,8 +28,12 @@ describe("inspectProductHtml", () => {
   });
 
   it("rejects external resources and embedded secrets", () => {
+    const secretFixture = ["sk", "fixture-secret-value-123"].join("-");
     const report = inspectProductHtml(
-      validHtml.replace("</body>", '<img src="https://example.com/a.png"><script>const apiKey = "sk-secret-value-123456789";</script></body>')
+      validHtml.replace(
+        "</body>",
+        `<img src="https://example.com/a.png"><script>const apiKey = "${secretFixture}";</script></body>`
+      )
     );
 
     expect(report.passed).toBe(false);

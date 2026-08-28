@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 import Database from "better-sqlite3";
 import {
   productProjectSchema,
@@ -14,6 +14,9 @@ import {
   type RunEvent,
   type ProjectSummary
 } from "@factory/shared";
+import { defaultDatabasePath } from "./database-path";
+
+export { defaultDatabasePath, findFactoryRoot } from "./database-path";
 
 export interface ProjectRegistry {
   save(project: ProductProject, event: ProductionEvent): void;
@@ -35,7 +38,7 @@ export interface ProductionRunStore {
     nextObjective: string,
     nextStage: ProductionStage
   ): { completedRun: ProductionRun; nextRun: ProductionRun };
-  approveAndComplete(id: string): { completedRun: ProductionRun; nextRun: null };
+  approveAndComplete(id: string, gate?: string): { completedRun: ProductionRun; nextRun: null };
 }
 
 type ProjectRow = {
@@ -78,31 +81,6 @@ type RunEventRow = {
   type: string;
   payload_json: string;
   occurred_at: string;
-};
-
-const findFactoryRoot = (start: string): string => {
-  let current = resolve(start);
-  while (true) {
-    const manifest = join(current, "package.json");
-    if (existsSync(manifest)) {
-      try {
-        const parsed = JSON.parse(readFileSync(manifest, "utf8")) as { name?: string };
-        if (parsed.name === "ai-product-factory") return current;
-      } catch {
-        // Keep walking; a malformed unrelated package manifest is not our root.
-      }
-    }
-    const parent = dirname(current);
-    if (parent === current) throw new Error("无法定位 AI 产品工厂根目录");
-    current = parent;
-  }
-};
-
-export const defaultDatabasePath = () => {
-  const configured = process.env.FACTORY_DATA_DIR?.trim();
-  const dataDir = configured ? resolve(configured) : join(findFactoryRoot(process.cwd()), "data");
-  mkdirSync(dataDir, { recursive: true });
-  return join(dataDir, "factory.sqlite");
 };
 
 const toProject = (row: ProjectRow): ProductProject =>
@@ -280,6 +258,21 @@ export class SqliteProjectRegistry implements ProjectRegistry {
   }
 }
 
+export { migrateFactoryDatabase, type MigrationReport } from "./migrations";
+export { SqliteHarnessRecordStore } from "./harness-records";
+export {
+  artifactBackupKey,
+  backupFactoryData,
+  createConfiguredObjectStore,
+  databaseBackupKey,
+  MemoryObjectStore,
+  readArtifactContent,
+  restoreFactoryDatabaseIfMissing,
+  startFactoryBackupScheduler,
+  type BackupResult,
+  type ObjectStore
+} from "./cloud-backup";
+
 const toRun = (row: RunRow): ProductionRun =>
   productionRunSchema.parse({
     id: row.id,
@@ -435,7 +428,7 @@ export class SqliteProductionRunStore implements ProductionRunStore {
     })();
   }
 
-  approveAndComplete(id: string) {
+  approveAndComplete(id: string, gate = "manual_completion") {
     return this.database.transaction(() => {
       const run = this.get(id);
       if (!run) throw new Error(`生产批次不存在：${id}`);
@@ -448,10 +441,16 @@ export class SqliteProductionRunStore implements ProductionRunStore {
       }
       const completedRun =
         run.status === "succeeded" ? run : this.transition(run.id, "succeeded");
+      if (gate === "release_handoff") {
+        this.database
+          .prepare("UPDATE projects SET status = 'candidate', updated_at = ? WHERE id = ?")
+          .run(new Date().toISOString(), run.projectId);
+      }
       this.append(run.id, "gate.approved", {
-        gate: "release_preparation",
+        gate,
         completed: true,
-        deploymentStarted: false
+        deploymentStarted: false,
+        ...(gate === "release_handoff" ? { projectStatus: "candidate" } : {})
       });
       return { completedRun, nextRun: null };
     })();

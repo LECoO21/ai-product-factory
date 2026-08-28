@@ -2,7 +2,7 @@ import Link from "next/link";
 import { getProductFactory } from "@factory/production";
 import { SqliteProductionRunStore } from "@factory/records";
 import { hasConfirmableAgentResult } from "@factory/shared";
-import { ProjectCard } from "@/components/project-card";
+import { CancelRunButton } from "@/components/cancel-run-button";
 import { CreateProjectForm } from "@/components/create-project-form";
 import { runStatusLabels, stageLabels } from "@/lib/labels";
 
@@ -35,7 +35,7 @@ export default function HomePage() {
     <div className="page factory-home">
       <header className="factory-home-header">
         <span>Naxe Agent</span>
-        <h1>告诉我你想做什么产品</h1>
+        <h1>今天想做什么产品？</h1>
       </header>
 
       <CreateProjectForm compact />
@@ -47,29 +47,15 @@ export default function HomePage() {
             <h2>{attentionRun.project.name}</h2>
             <strong>{stageLabels[attentionRun.run.stage]}</strong>
           </div>
-          <Link href={`/runs/${attentionRun.run.id}`} className="primary-button">
-            {attentionRun.needsApproval ? "去确认" : "查看进度"}
-          </Link>
+          <div className="attention-actions">
+            <CancelRunButton runId={attentionRun.run.id} />
+            <Link href={`/runs/${attentionRun.run.id}`} className="primary-button">
+              {attentionRun.needsApproval ? "去确认" : "查看进度"}
+            </Link>
+          </div>
         </section>
       ) : null}
 
-      <section id="projects" className="home-projects">
-        <div className="section-title-row">
-          <h2>最近产品</h2>
-          <Link href="/projects/new">新建</Link>
-        </div>
-        {projects.length > 0 ? (
-          <div className="project-grid simple-project-grid">
-            {projects.map((project) => (
-              <ProjectCard key={project.id} project={project} />
-            ))}
-          </div>
-        ) : (
-          <Link href="/projects/new" className="empty-action">
-            新建第一个产品
-          </Link>
-        )}
-      </section>
     </div>
   );
 }

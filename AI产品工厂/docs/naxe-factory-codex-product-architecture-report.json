@@ -1,0 +1,190 @@
+{
+  "product": "Naxe AI 产品工厂",
+  "title": "Naxe AI 产品工厂 — Codex 式运行架构全景",
+  "subtitle": "保留 G1–G9 产品生产流程，以协议、Thread/Turn、运行核心和适配器重构执行底座",
+  "generated_at": "2026-08-27",
+  "scope": "OpenAI Codex 官方开源仓库与 AI 产品工厂本地代码的 As-Is / To-Be 对照",
+  "source_count": 12,
+  "sections": [
+    {
+      "id": "executive-summary",
+      "title": "1. 执行摘要",
+      "kicker": "Outcome",
+      "summary": "业务流程不变，运行底座从 Worker 内隐式编排迁移为协议驱动的模块化单体。",
+      "blocks": [
+        {"type":"callout","level":"confirmed","title":"本次已经落地","text":"产品项目映射 Thread，生产批次映射 Turn；Runtime Core 统一选择工位、校验真实结果并应用终态；旧 WebUI 事件与 protocol.* 双写。E-FACTORY-03"},
+        {"type":"cards","items":[{"title":"保留","text":"Pi Agent + DeepSeek、三手册、G1–G9、SQLite、ToolGateway、发布候选边界。","level":"confirmed","meta":"E-FACTORY-01"},{"title":"改变","text":"加入 Protocol、Runtime Core、Command Gateway、Provider Adapter。","level":"confirmed","meta":"E-FACTORY-03"},{"title":"不复制","text":"不复制 Codex 品牌、TUI、Rust 或云端产品能力。","level":"recommended","meta":"REC-BOUNDARY-01"}]}
+      ]
+    },
+    {
+      "id": "scope-evidence",
+      "title": "2. 范围与证据",
+      "kicker": "Evidence",
+      "summary": "只使用官方仓库和本地代码可验证事实。",
+      "blocks": [
+        {"type":"table","columns":["ID","级别","来源","结论"],"rows":[["E-CODEX-02","confirmed","protocol.rs","Submission/Op 与 Event/EventMsg 分离"],["E-CODEX-03","confirmed","codex_thread.rs","Thread 是双向消息通道"],["E-CODEX-04","confirmed","thread_manager.rs","Thread 可创建、管理、恢复"],["E-CODEX-05","confirmed","app-server README","富客户端通过 Thread/Turn/Item 协议接入"],["E-CODEX-06","confirmed","model-provider-info","Provider 配置集中"],["E-FACTORY-03","confirmed","本次代码","Protocol 和 Runtime Core 已进入 Worker 路径"]]},
+        {"type":"callout","level":"unknown","title":"未知边界","text":"Codex 非开源云端调度和内部服务不在证据范围，不能推断为本项目组件。UNK-CLOUD-01"}
+      ]
+    },
+    {
+      "id": "functional-domains",
+      "title": "3. 功能域",
+      "kicker": "Domains",
+      "summary": "架构服务通用数字产品生产，而非单一小游戏。",
+      "blocks": [
+        {"type":"table","columns":["功能域","用户任务","运行责任","证据"],"rows":[["接单与 PRD","输入需求或文档","生成并确认产品理解","E-FACTORY-01"],["技术适配","确认技术方案","加载三手册并生成适配声明","E-MANUAL-01"],["产品生产","获得可运行产品","Pi Agent 经工具网关行动","E-FACTORY-02"],["质量验收","查看真实结果并操作","确定性检查 + 人工闸门","E-FACTORY-04"],["发布交接","获得手工发布材料","停在 candidate，不实际发布","E-FACTORY-05"]]},
+        {"type":"mermaid","title":"用户任务主链路","caption":"实线是已确认现状；所有确认都绑定真实产物。","code":"flowchart LR\n  A[输入需求 E-FACTORY-01] --> B[PRD与技术适配]\n  B --> C{人工确认}\n  C -->|通过| D[生产与自动质量]\n  C -->|修改| B\n  D --> E{真实验收}\n  E -->|通过| F[发布方案与检查]\n  E -->|失败| D\n  F --> G[发布候选 E-FACTORY-05]"}
+      ]
+    },
+    {
+      "id": "end-to-end-flow",
+      "title": "4. 五条端到端流",
+      "kicker": "Flows",
+      "summary": "用户、控制、模型工具、状态和恢复必须同时闭环。",
+      "blocks": [
+        {"type":"table","columns":["流","入口","关键路径","终点"],"rows":[["用户流","PRD","查看结果→确认/修改","真实产物"],["控制流","Protocol Command","Runtime Core→Handler→Outcome","确定性状态"],["模型工具流","生产单","Pi Agent→ToolGateway→结果","Evidence/Artifact"],["数据状态流","事件","SQLite append→投影→SSE","可恢复快照"],["失败恢复流","错误/中断","明确终态→重试/恢复","不伪造完成"]]},
+        {"type":"callout","level":"recommended","title":"关键原则","text":"模型事件只是观察；状态转换、确认资格和完成结论由 Runtime Core 与 Production Controller 决定。REC-CONTROL-01"}
+      ]
+    },
+    {
+      "id": "product-task-graph",
+      "title": "5. 产品任务图",
+      "kicker": "Task Graph",
+      "summary": "固定生产阶段与阶段内动态行动保持分离。",
+      "blocks": [
+        {"type":"mermaid","title":"生产任务与决定","caption":"G1–G9 业务语义保留；Codex 式 Core 只替换执行底座。","code":"flowchart TD\n  I[Thread=产品项目] --> T1[Turn 接单]\n  T1 --> G1{结果存在且确认}\n  G1 --> T2[Turn 技术适配]\n  T2 --> T3[Turn 阶段设计+HTML]\n  T3 --> T4[Turn 产品实现]\n  T4 --> Q[自动质量]\n  Q --> A[真实验收]\n  A --> R[发布方案/检查/交接]\n  R --> C[Candidate]\n  G1 -.退回.-> T1\n  Q -.失败证据.-> T4"},
+        {"type":"code","title":"节点合同","language":"text","code":"Input: confirmed upstream artifacts + work order\nAction: one registered RuntimeTurnHandler\nOutput: durable item/artifact/evidence events\nExit: awaiting_approval | completed | failed | blocked | interrupted"}
+      ]
+    },
+    {
+      "id": "agent-contracts",
+      "title": "6. Agent 合同",
+      "kicker": "Agents",
+      "summary": "第一版只有一个工厂 Agent；确定性模块不是 Agent。",
+      "blocks": [
+        {"type":"table","columns":["主体","类型","输入","输出/交接"],"rows":[["Factory Agent","模型驱动","生产单、手册、PRD、工具","工具请求与工位结果"],["PiAgentRuntime","适配器","AgentAssignment","流式 AgentRuntimeEvent"],["Runtime Core","确定性代码","Run、Project、Handler","TurnOutcome 与状态"],["Production Controller","确定性代码","确认命令、真实结果","下一 Turn 或 Candidate"]]},
+        {"type":"callout","level":"confirmed","title":"禁止混淆","text":"Factory Agent 不拥有生产状态、权限裁决、质量通过或发布决定。E-FACTORY-02"}
+      ]
+    },
+    {
+      "id": "tools-models",
+      "title": "7. 工具与模型",
+      "kicker": "Contracts",
+      "summary": "Provider 与工具策略各自只有一个受控 seam。",
+      "blocks": [
+        {"type":"table","columns":["组件","接口","确定性约束","证据"],"rows":[["DeepSeekPiAgentFactory","create(options)","服务端 Key、模型存在性、顺序工具执行","E-FACTORY-06"],["PiAgentRuntime","run(assignment)","统一事件和失败出口","E-FACTORY-06"],["ToolGateway","execute(call)","Zod、路径、P0–P3、审计","E-FACTORY-02"],["CompletionVerifier","verify(goal)","只读真实 Evidence","E-FACTORY-02"]]},
+        {"type":"mermaid","title":"Agent—工具—状态流","caption":"控制边与数据边分开标注。","code":"flowchart LR\n  RC[Runtime Core REC-CONTROL-01] -->|控制| PA[Pi Agent]\n  PA -->|Tool Request| TG[ToolGateway]\n  TG -->|策略裁决| WS[Workspace/Command/Test]\n  WS -->|Tool Result| TG\n  TG -->|观察| PA\n  TG -->|事实| DB[(SQLite)]\n  PA -->|结果事件| RC\n  DB -->|证据| CV[CompletionVerifier]\n  CV -->|决定依据| RC"}
+      ]
+    },
+    {
+      "id": "state-data",
+      "title": "8. 状态与数据",
+      "kicker": "Sources of Truth",
+      "summary": "SQLite 是生产事实来源，工作区和产物文件保存大对象。",
+      "blocks": [
+        {"type":"table","columns":["状态库","事实","写入者","恢复方式"],"rows":[["projects","产品身份、画像、蓝图、candidate","ProductFactory/Controller","按 projectId"],["production_runs","Turn 阶段与终态","Runtime Core/Controller","按 runId"],["run_events","旧事件+protocol.*","Publisher/Store","按 sequence 续读"],["harness_runs/tasks","工具循环与任务","FactoryHarness","按 productionRunId"],["artifacts/evidence","产物索引与质量事实","受控工具","哈希与引用"],["JSONL Session","模型消息与工具轨迹","Pi Harness Adapter","按 session id"]]},
+        {"type":"callout","level":"inferred","title":"下一步投影","text":"新 WebUI 可从 protocol.* 构建 ThreadSnapshot，但在兼容验证前仍保留现有 RunEvent 投影。REC-PROJECTION-01"}
+      ]
+    },
+    {
+      "id": "events",
+      "title": "9. 事件合同",
+      "kicker": "Protocol",
+      "summary": "协议事件有版本、Thread、Turn 和不可变事件身份。",
+      "blocks": [
+        {"type":"table","columns":["事件","拥有者","含义","后续"],"rows":[["thread.configured","Runtime Core","运行配置已冻结","turn.started"],["turn.started","Runtime Core","Handler 开始","item.*"],["item.delta","Event Publisher","文本或增量观察","不改变状态"],["approval.requested","Runtime Core","真实结果可确认","等待人工"],["approval.resolved","Production Controller","用户决定已持久化","turn.completed"],["turn.failed/blocked/interrupted","Runtime Core","明确非成功终态","重试/恢复"]]},
+        {"type":"code","title":"Event Envelope","language":"json","code":"{\n  \"protocolVersion\": \"1.0\",\n  \"eventId\": \"...\",\n  \"threadId\": \"product-project-id\",\n  \"turnId\": \"production-run-id\",\n  \"type\": \"turn.started\",\n  \"payload\": {},\n  \"occurredAt\": \"ISO-8601\"\n}"}
+      ]
+    },
+    {
+      "id": "knowledge-assets",
+      "title": "10. 知识与资产",
+      "kicker": "Knowledge",
+      "summary": "三份原始手册始终是最高权威，不进入公开仓库。",
+      "blocks": [
+        {"type":"cards","items":[{"title":"原始手册","text":"内部全文、SHA 校验、不得压缩替代。","level":"confirmed","meta":"E-MANUAL-01"},{"title":"已确认产物","text":"PRD、适配、蓝图、阶段结果按版本进入上下文。","level":"confirmed","meta":"E-FACTORY-01"},{"title":"运行观察","text":"代码、测试、工具结果和 Evidence 是当前事实。","level":"confirmed","meta":"E-FACTORY-02"}]},
+        {"type":"callout","level":"recommended","title":"新架构影响","text":"协议层只保存引用和事实，不改变 ManualAuthority 的加载顺序或公开边界。REC-KNOWLEDGE-01"}
+      ]
+    },
+    {
+      "id": "layered-architecture",
+      "title": "11. 分层架构",
+      "kicker": "Layers",
+      "summary": "Core 接口小，业务能力深，适配器位于边缘。",
+      "blocks": [
+        {"type":"mermaid","title":"目标分层","caption":"推荐层已在第一阶段部分落地。","code":"flowchart TB\n  UI[WebUI] --> HTTP[HTTP/SSE Adapter]\n  HTTP --> PC[Production Controller]\n  HTTP --> CG[Command Gateway]\n  W[Worker Process] --> RC[Runtime Core]\n  RC --> PH[Station Handlers]\n  PH --> AR[Agent Runtime Port]\n  PH --> HG[Harness/Tool Policy]\n  AR --> DS[DeepSeek Provider Adapter]\n  RC --> P[Protocol]\n  PC --> P\n  P --> R[Records Port]\n  R --> DB[(SQLite)]"},
+        {"type":"prose","title":"依赖规则","text":"页面和 Route Handler 不能直接拥有生产状态机；Agent Provider 不能直接写项目状态；Records 不反向依赖 UI；危险工具只能经过 ToolGateway。REC-LAYERS-01"}
+      ]
+    },
+    {
+      "id": "entity-model",
+      "title": "12. 实体模型",
+      "kicker": "Entities",
+      "summary": "Thread/Turn 是协议身份，不替换产品领域名称。",
+      "blocks": [
+        {"type":"table","columns":["实体","身份","关系","事实来源"],"rows":[["ProductProject / Thread","project.id","1:N ProductionRun","projects"],["ProductionRun / Turn","run.id","N:1 Project","production_runs"],["ProtocolEvent","eventId + sequence","N:1 Turn","run_events"],["FactoryTask","task.id","N:1 Turn","factory_tasks"],["Artifact","artifact.id","N:1 HarnessRun","artifacts"],["Evidence","evidence.id","N:1 HarnessRun/criterion","evidence"]]},
+        {"type":"mermaid","title":"实体关系","caption":"协议身份与已有数据实体一一映射，不要求破坏性迁移。","code":"erDiagram\n  PRODUCT_PROJECT ||--o{ PRODUCTION_RUN : owns\n  PRODUCTION_RUN ||--o{ PROTOCOL_EVENT : records\n  PRODUCTION_RUN ||--o| FACTORY_TASK : executes\n  FACTORY_TASK ||--o| HARNESS_RUN : drives\n  HARNESS_RUN ||--o{ TOOL_INVOCATION : requests\n  HARNESS_RUN ||--o{ ARTIFACT : creates\n  HARNESS_RUN ||--o{ EVIDENCE : verifies"}
+      ]
+    },
+    {
+      "id": "sequence",
+      "title": "13. 端到端时序",
+      "kicker": "Sequence",
+      "summary": "成功、修改、失败、重试和中断都有协议出口。",
+      "blocks": [
+        {"type":"mermaid","title":"生产 Turn 时序","caption":"确认只会发生在结果和 agent.completed 已持久化之后。","code":"sequenceDiagram\n  actor U as 用户\n  participant W as Web Adapter\n  participant C as Runtime Core\n  participant H as Handler/Pi Agent\n  participant T as ToolGateway\n  participant D as SQLite\n  U->>W: 开始生产\n  W->>D: 创建 Turn\n  C->>D: turn.started\n  C->>H: execute\n  H->>T: tool request\n  T-->>H: result/evidence\n  H->>D: item.delta + agent.completed\n  alt 结果有效\n    C->>D: approval.requested\n    U->>W: 确认或修改\n    W->>D: approval.resolved / next Turn\n  else 失败\n    C->>D: turn.failed\n    U->>W: 重试\n  else 中断\n    U->>W: turn.interrupt\n    W->>D: command.received\n    H-->>C: interrupted\n  end"}
+      ]
+    },
+    {
+      "id": "panorama",
+      "title": "14. 产品全景",
+      "kicker": "Panorama",
+      "summary": "控制、数据和状态边都能追踪到一个明确拥有者。",
+      "blocks": [
+        {"type":"mermaid","title":"全景架构图","caption":"实线为已确认；虚线为下一阶段推荐投影。","code":"flowchart LR\n  U[产品负责人] --> UI[WebUI]\n  UI -->|Command| TR[HTTP/SSE Transport]\n  TR --> CG[Command Gateway]\n  TR --> PC[Production Controller]\n  WK[Worker] --> RC[Runtime Core]\n  RC --> HR[Handler Registry]\n  HR --> PI[Pi Agent]\n  PI --> DS[DeepSeek]\n  HR --> TG[ToolGateway]\n  TG --> ENV[Workspace/Git/Test/Browser]\n  RC --> EP[Protocol Publisher]\n  PC --> EP\n  CG --> EP\n  EP --> DB[(SQLite Events)]\n  DB -->|SSE| TR\n  DB -.-> SNAP[Thread Snapshot REC-PROJECTION-01]\n  SNAP -.-> UI"},
+        {"type":"list","title":"图例","items":["控制边：Command 或 Runtime 调用","数据边：模型/工具结果与 Artifact/Evidence","状态边：Protocol Event → SQLite → Snapshot","推荐边：虚线，仅在下一阶段实施"]}
+      ]
+    },
+    {
+      "id": "as-is-to-be",
+      "title": "15. As-Is → To-Be",
+      "kicker": "Migration",
+      "summary": "采用可回退的局部迁移，不推倒已验证模块。",
+      "blocks": [
+        {"type":"table","columns":["关注点","As-Is","第一阶段 To-Be","后续"],"rows":[["编排","Worker if/else","Runtime Handler Registry","工位拆包"],["事件","自由字符串","protocol 1.0 + 兼容双写","UI 原生协议投影"],["控制命令","Route 直接追加 Harness 事件","RuntimeCommandGateway","多传输接入"],["模型","Runtime 直接建 DeepSeek client","PiAgentFactory Adapter","按需增加 Provider"],["确认","gate 字符串","approval lifecycle + checkpoint","拒绝/修改协议"],["恢复","RunEvent + JSONL","Thread/Turn 身份化","显式 recover command"]]},
+        {"type":"callout","level":"inferred","title":"迁移判断","text":"双写期会增加事件量，但换来历史兼容和可回滚；这是当前未提交工作较多时风险最低的迁移方式。REC-MIGRATION-01"}
+      ]
+    },
+    {
+      "id": "exceptions-recovery",
+      "title": "16. 异常与恢复",
+      "kicker": "Recovery",
+      "summary": "每类故障都有稳定状态和恢复动作。",
+      "blocks": [
+        {"type":"table","columns":["故障","检测","终态","恢复/补偿"],"rows":[["模型未配置","Provider Adapter","blocked","配置 Key 后新 Turn"],["模型空结果","Runtime Core","failed","同工位重试"],["工具拒绝","ToolGateway","waiting/failed","人工批准或改方案"],["测试失败","真实 exitCode/Evidence","继续或 failed","Agent 修复后复测"],["Worker 中断","持久 Run/Session","interrupted/running audit","按 checkpoint 恢复"],["重复命令","idempotency key","原回执","不重复副作用"],["发布缺材料","Readiness Handler","failed","补材料后重跑"]]},
+        {"type":"callout","level":"recommended","title":"恢复不变量","text":"恢复只能重放无副作用读取；带副作用调用必须通过稳定调用键、已有 Tool Result 或人工确认决定是否继续。REC-RECOVERY-01"}
+      ]
+    },
+    {
+      "id": "risks",
+      "title": "17. 风险",
+      "kicker": "Risks",
+      "summary": "风险按数据和行为破坏程度排序。",
+      "blocks": [
+        {"type":"table","columns":["ID","优先级","风险","缓解"],"rows":[["RISK-01","P0","新旧事件语义漂移","双写测试和投影契约"],["RISK-02","P0","Core 与 Controller 双重拥有状态","Core 管运行终态，Controller 只管人工闸门和阶段"],["RISK-03","P1","恢复时重复工具副作用","stable key + Tool Result 去重"],["RISK-04","P1","Worker 仍含较多工位实现","下一阶段按 Handler 文件拆分"],["RISK-05","P2","协议事件增长 SQLite 体积","索引、分页、归档评估"],["RISK-06","P2","把 Codex 形态误当产品需求","以 PRD 和三手册为准"]]},
+        {"type":"callout","level":"unknown","title":"待量化","text":"真实长生产批次下的协议事件增长、SQLite 查询延迟和双写成本尚无足量数据。UNK-PERF-01"}
+      ]
+    },
+    {
+      "id": "traceability",
+      "title": "18. 追溯与验收",
+      "kicker": "Traceability",
+      "summary": "每个新组件都能追溯到官方证据、本地问题和自动测试。",
+      "blocks": [
+        {"type":"table","columns":["组件","设计依据","实现","验收"],"rows":[["Protocol","E-CODEX-02","packages/protocol","schema + 双写测试"],["Runtime Core","E-CODEX-03/04","packages/runtime-core","空结果/审批/命令幂等"],["Provider Adapter","E-CODEX-06","agent-runtime/model-provider.ts","typecheck + 原 runtime 测试"],["Web Command Adapter","E-CODEX-05","steer/abort routes","现有 E2E"],["Approval lifecycle","REC-CONTROL-01","ProductionController","workflow 测试"],["兼容层","REC-MIGRATION-01","ProtocolEventPublisher.legacy","旧 UI 测试"]]},
+        {"type":"callout","level":"confirmed","title":"当前验收结果","text":"结构迁移后的 lint、TypeScript、28 个测试文件/93 条测试、Playwright 8/8 和 veFaaS Linux 构建已通过；报告已在 1024/736/360 宽度完成视觉验收。E-TEST-01"},
+        {"type":"list","title":"后续持续验证","items":["真实 DeepSeek 长工位下的协议事件完整性、Token 与耗时","历史数据全部迁到原生 Protocol 投影后再评估移除兼容双写","长生产批次的 SQLite 事件增长和查询延迟"]}
+      ]
+    }
+  ]
+}

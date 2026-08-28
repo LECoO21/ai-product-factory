@@ -1,6 +1,6 @@
 # AI 产品工厂
 
-> 版本：V0.2 PRD 与 G2–G5 已确认，当前进入 G6“最小可执行 Harness”阶段文档确认
+> 版本：V0.5，G2–G9 流程保留，运行底座已迁入 Codex 式 Protocol + Runtime Core 架构
 > 当前定位：供产品负责人本人使用的本地优先对话式 Web 控制台，以 Pi Agent + DeepSeek 为驾驶者，以受控 Agent Harness 为执行载具，把不同类型数字产品从 PRD 生产到发布候选。
 
 这里的“AI 产品工厂”指由 AI 驱动生产，不要求被生产的产品本身一定包含 AI。小游戏只是第一台试产样机，不是工厂的默认产品类型。
@@ -12,8 +12,9 @@
 ## 当前方向
 
 - 产品形态：可控制、可观察、可暂停和恢复的 WebUI，不是命令行脚本或一次性 Prompt。
-- 核心架构：确定性控制平面管理状态、工作流、权限、预算和闸门；工厂 Agent 在边界内规划并调用工具，二者不能互相替代。
-- Agent 运行时：`@earendil-works/pi-agent-core@0.84.2`，并封装在工厂自己的 `AgentRuntime` 接口之后。
+- 核心架构：借鉴 OpenAI Codex 的协议/Core/客户端分离方式；确定性 Runtime Core 管 Thread/Turn 生命周期、状态和闸门，工厂 Agent 在边界内规划并调用工具。
+- 协议层：产品项目映射 Thread、生产批次映射 Turn；版本化 `protocol.*` 事件进入 SQLite，旧 WebUI 事件在迁移期兼容双写。
+- Agent 运行时：`@earendil-works/pi-agent-core@0.84.2` 的低层 `Agent`，并封装在工厂自己的 `AgentRuntime` / `FactoryHarness` 接口之后；高层 `AgentHarness` 当前为未实现壳，不作为生产入口。
 - 模型层：通过 `@earendil-works/pi-ai@0.84.2` 接入 DeepSeek，密钥只保存在服务端环境中。
 - 第一版用户：产品负责人本人，暂不处理多租户、团队权限和商业化账户体系。
 - 通用性：工厂内核不包含游戏、SaaS 或 Agent 产品的专属概念；产品差异由生产蓝图和能力包表达。
@@ -43,6 +44,15 @@
 19. [第一阶段技术开发文档：最小可执行 Harness](./docs/17-第一阶段技术开发文档-最小可执行Harness.md)
 20. [第一阶段生产单：最小可执行 Harness](./docs/18-第一阶段生产单-最小可执行Harness.md)
 21. [第一阶段完成目标：最小可执行 Harness](./docs/19-第一阶段完成目标-最小可执行Harness.md)
+22. [G6 最小可执行 Harness 验收报告](./docs/20-G6最小可执行Harness-验收报告.md)
+23. [G7 第二阶段前端开发文档：真实任务工作台](./docs/21-G7第二阶段前端开发文档-真实任务工作台.md)
+24. [G7 真实任务工作台验收报告](./docs/22-G7真实任务工作台-验收报告.md)
+25. [上线技术适配声明](./docs/23-AI产品工厂-上线技术适配声明.md)
+26. [G8–G9 上线部署阶段开发文档](./docs/24-G8-G9上线部署阶段开发文档.md)
+27. [G8–G9 上线准备验收报告](./docs/25-G8-G9上线准备验收报告.md)
+28. [G9 上线流程实现与验收](./docs/26-G9上线流程实现与验收.md)
+29. [Codex 式运行架构技术适配与迁移说明](./docs/27-Codex式运行架构技术适配与迁移说明.md)
+30. [Codex 式运行架构全景 HTML](./docs/naxe-factory-codex-product-architecture.html)
 
 ## 一句话流程
 
@@ -54,8 +64,10 @@
 → Workflow 启动，Agent 调用工具生产
 → Goal Gate 检查真实证据
 → 用户验收 Agent 效果
-→ 生成发布候选
-→ 用户确认后部署
+→ 生成上线方案
+→ 检查上线材料
+→ 生成手工发布清单
+→ 停在待人工发布
 ```
 
 ## 当前状态
@@ -74,6 +86,8 @@
 - WebUI 启动“PRD 体检”、运行控制台和 SSE 实时事件流；
 - 精简 WebUI：首页只保留待处理任务、产品列表和新建入口；
 - 运行页只保留当前步骤、AI 结果、确认按钮和默认收起的最近 20 条运行记录；
+- 前端统一 API、错误、任务状态和 SSE 断线恢复；结果与产物优先，工具详情默认折叠；
+- Vitest + React Testing Library 覆盖核心交互，Playwright 使用隔离数据库覆盖刷新、失败、断线、键盘和四档宽度；
 - “理解产品 → 确认 → 确定技术方案 → 确认 → 生成开发计划”的确定性流转；
 - 确认状态、确认事件和下一工位全部持久化，重复确认不会创建重复任务；
 - 首页可识别新旧批次的待确认状态，并提供真实“去确认”入口；
@@ -82,9 +96,13 @@
 
 当前画像仍由确定性规则生成，目的是保证没有模型 Key 时工厂也能完成接单和蓝图编译。2026-08-21 已使用本地安全配置完成一次真实 Pi Agent + `deepseek-v4-flash` 端到端冒烟，生产批次成功并持久化完整事件。
 
-当前还不能声称完整产品生产线已完成：受控文件写入、Shell、检查点恢复、自动测试证据采集和真实产品生产属于后续里程碑。里程碑 2 也尚待补齐暂停、补充指令、继续、终止和用量摘要。
+G6 最小可执行 Harness 已完成真实 DeepSeek 闭环：受控读取与补丁、测试失败、Evidence 登记、修复、复测通过、完成验证和人工确认时机均已验证。完整 Workflow journal/checkpoint、P2 决定后原地恢复、完整 Goal Gate、用量预算和正式产品生产仍属于后续阶段。
 
-Agent Blueprint 的 V0.2 产品方案已经通过 G5：现有 Worker 仍是一张生产单对应一次模型生成，下一阶段先建设最小可执行 Harness，包括单一 Agent Loop、ToolGateway、Hooks、权限、手册权威加载、持久任务、后台任务、WorkPlan、产物与证据登记。完整 Workflow journal/checkpoint 与 Goal Gate 留在 V0.2-C；G6 阶段文档确认前不改写生产代码。
+G7 真实任务工作台已验收。G8 已按第三份上线部署手册完成登录保护、Web + Worker 同进程运行、SQLite/TOS 备份接口、结构化日志、Sentry 接口和 veFaaS Linux/Node 20 私有部署包。本地 production standalone、真实浏览器和全部自动检查已通过，状态为“发布候选已就绪”。
+
+G9 已按新方向改为“上线流程”：真实验收后依次生成上线方案、自动核对产品/测试/验收/回滚证据、生成手工发布清单，最后只把产品标记为“发布候选”。流程不登录云平台、不创建资源、不写入正式 Secret、不执行 Git push 或部署。
+
+V0.5 已完成 Codex 式运行底座的第一阶段迁移：新增 `@factory/protocol` 和 `@factory/runtime-core`，Worker 通过注册 Handler 执行工位，Runtime Core 统一检查真实结果并应用终态；Web 的引导/中断命令通过统一 Command Gateway；DeepSeek 通过可替换的 Pi Agent Provider Adapter 接入。现有 G1–G9、三手册、ToolGateway、SQLite、SSE 和前端操作保持兼容。
 
 ## 本地运行
 
@@ -111,7 +129,23 @@ npm run manuals:verify
 npm run lint
 npm run typecheck
 npm test
-npm run build
+npm run test:e2e
+npm run build:vefaas
 ```
 
 本地数据保存在 `data/factory.sqlite`，该目录已经加入 `.gitignore`。
+
+## veFaaS 发布候选
+
+本节只记录发布候选的构建与人工交接信息，产品工厂不会自动调用 veFaaS 发布命令。
+
+部署构建：
+
+```bash
+npm ci
+npm run build:vefaas
+```
+
+构建产物位于 `apps/web/.next/standalone`，启动命令为 `node apps/web/server.js`，端口为 `3000`。部署时必须显式指定 Node 20 runtime、构建命令、产物路径、启动命令和端口，不使用 CLI 的自动推断结果。
+
+正式环境变量键见 [`.env.example`](./.env.example)。`AUTH_SECRET`、`INVITE_CODES`、`DEEPSEEK_API_KEY`、对象存储凭据和 `SENTRY_DSN` 只能保存在部署平台 Secret 中，不得写入 Git、部署命令或文档。
