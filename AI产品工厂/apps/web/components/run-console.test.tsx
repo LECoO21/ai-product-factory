@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { act } from "react";
 import { hydrateRoot } from "react-dom/client";
 import { renderToString } from "react-dom/server";
@@ -9,11 +10,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProductionRun, RunEvent } from "@factory/shared";
 import { RunConsole } from "./run-console";
 
-const push = vi.fn();
-const refresh = vi.fn();
+const { push, refresh, reviseProductionRun } = vi.hoisted(() => ({
+  push: vi.fn(),
+  refresh: vi.fn(),
+  reviseProductionRun: vi.fn()
+}));
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push, refresh }) }));
 vi.mock("@/lib/stream/run-stream-client", () => ({ connectRunStream: () => () => undefined }));
+vi.mock("@/features/production-run/api", () => ({
+  abortProductionRun: vi.fn(),
+  approveProductionRun: vi.fn(),
+  getProductionRun: vi.fn(),
+  reviseProductionRun,
+  steerProductionRun: vi.fn()
+}));
 
 const run = (status: ProductionRun["status"], stage: ProductionRun["stage"] = "intake"): ProductionRun => ({
   id: "run-1",
@@ -47,6 +58,7 @@ describe("RunConsole", () => {
   beforeEach(() => {
     push.mockReset();
     refresh.mockReset();
+    reviseProductionRun.mockReset();
   });
 
   it("shows confirmation only after a real result exists", () => {
@@ -61,6 +73,24 @@ describe("RunConsole", () => {
     );
     expect(screen.getByRole("button", { name: "确认理解，进入技术方案" }).closest(".run-output-panel")).toBeInTheDocument();
     expect(screen.getByText("本阶段不会部署或发布。", { exact: false })).toBeInTheDocument();
+  });
+
+  it("allows the product owner to answer questions or request changes before approval", async () => {
+    const user = userEvent.setup();
+    reviseProductionRun.mockResolvedValue({ run: { ...run("ready"), id: "run-2" } });
+    render(
+      <RunConsole initialRun={run("waiting_approval")} initialEvents={completedEvents} initialHarness={null} />
+    );
+
+    const feedback = screen.getByRole("textbox", { name: "补充回答或修改意见" });
+    await user.type(feedback, "需要支持搜索、打开、复制和整理，验收标准是三步内打开网址。");
+    await user.click(screen.getByRole("button", { name: "提交并重新分析" }));
+
+    await waitFor(() => expect(reviseProductionRun).toHaveBeenCalledWith(
+      "run-1",
+      "需要支持搜索、打开、复制和整理，验收标准是三步内打开网址。"
+    ));
+    expect(push).toHaveBeenCalledWith("/runs/run-2");
   });
 
   it("hydrates the waiting clock without a server/client text mismatch", async () => {

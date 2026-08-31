@@ -79,6 +79,14 @@ export function retryProductionRun(runId: string) {
   });
 }
 
+export function reviseProductionRun(runId: string, feedback: string) {
+  return requestJson(`/api/runs/${encodeURIComponent(runId)}/revise`, {
+    method: "POST",
+    body: JSON.stringify({ feedback }),
+    schema: runResponseSchema
+  });
+}
+
 export function steerProductionRun(runId: string, message: string, idempotencyKey: string) {
   return requestJson(`/api/runs/${encodeURIComponent(runId)}/steer`, {
     method: "POST",

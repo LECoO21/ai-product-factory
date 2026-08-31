@@ -1327,9 +1327,9 @@ body:has(.factory-sidebar.is-collapsed) .factory-main {
 }
 
 .result-confirmation {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
   gap: 20px;
   margin: 18px -24px -24px;
   padding: 16px 24px;
@@ -1351,6 +1351,60 @@ body:has(.factory-sidebar.is-collapsed) .factory-main {
 
 .result-confirmation .primary-button {
   white-space: nowrap;
+}
+
+.review-feedback-form {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 9px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.review-feedback-form label {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.review-feedback-form textarea {
+  width: 100%;
+  min-height: 78px;
+  resize: vertical;
+  padding: 11px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  outline: none;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.review-feedback-form textarea:focus {
+  border-color: var(--ink);
+  box-shadow: 0 0 0 1px var(--ink);
+}
+
+.review-feedback-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.review-feedback-actions span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.review-feedback-actions .secondary-button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.review-feedback-form .form-error {
+  color: var(--danger);
 }
 
 .failure-result-footer {
@@ -1847,6 +1901,7 @@ body:has(.factory-sidebar.is-collapsed) .factory-main {
   }
 
   .result-confirmation {
+    grid-template-columns: 1fr;
     margin-right: -20px;
     margin-bottom: -20px;
     margin-left: -20px;
@@ -1855,6 +1910,15 @@ body:has(.factory-sidebar.is-collapsed) .factory-main {
 
   .confirmation-actions {
     justify-items: stretch;
+  }
+
+  .review-feedback-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .review-feedback-actions .secondary-button {
+    width: 100%;
   }
 
   .run-output-panel {

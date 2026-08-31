@@ -158,15 +158,35 @@ function executeReleaseHandoff({ run, project, events }: RuntimeTurnContext): Tu
 }
 
 const previousResult = (run: ProductionRun) => {
-  const previous = runs
-    .listForProject(run.projectId)
-    .find((candidate) => candidate.createdAt < run.createdAt && candidate.status === "succeeded");
+  const history = runs.listForProject(run.projectId).filter((candidate) => candidate.id !== run.id);
+  const revisionSource = history.find((candidate) =>
+    runs.events(candidate.id).some(
+      (event) =>
+        event.type === "gate.revision_requested" && event.payload.revisionRunId === run.id
+    )
+  );
+  const previous = revisionSource ?? history.find((candidate) => candidate.status === "succeeded");
   if (!previous) return "无";
-  return runs
+  const output = runs
     .events(previous.id)
     .filter((event) => event.type === "text.delta")
     .map((event) => String(event.payload.delta ?? ""))
     .join("");
+  if (!revisionSource || revisionSource.stage === run.stage) return output;
+
+  const previousSameStage = history.find(
+    (candidate) =>
+      candidate.id !== revisionSource.id &&
+      candidate.stage === run.stage &&
+      hasConfirmableAgentResult(runs.events(candidate.id))
+  );
+  if (!previousSameStage) return output;
+  const sameStageOutput = runs
+    .events(previousSameStage.id)
+    .filter((event) => event.type === "text.delta")
+    .map((event) => String(event.payload.delta ?? ""))
+    .join("");
+  return `需要处理的确认结果：\n${output}\n\n上一版同工位完整结果：\n${sameStageOutput}`;
 };
 
 const previousImplementationArtifact = (run: ProductionRun) => {

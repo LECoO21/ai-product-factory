@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { createProject } from "@/features/product-intake/api";
+import { startProductionRun } from "@/features/production-run/api";
 import { getErrorMessage } from "@/lib/api/client";
 
 const inputModes = ["描述需求", "粘贴 PRD"] as const;
@@ -35,10 +36,10 @@ export function CreateProjectForm({ compact = false }: { compact?: boolean }) {
         workspacePath: null,
         prd: submittedRequirement
       });
-      router.push(`/projects/${result.project.id}`);
-      router.refresh();
+      const started = await startProductionRun(result.project.id);
+      router.push(`/runs/${started.run.id}`);
     } catch (caught) {
-      setError(getErrorMessage(caught, "创建产品项目失败"));
+      setError(getErrorMessage(caught, "创建产品或启动分析失败"));
       setSubmitting(false);
     }
   }
@@ -78,8 +79,8 @@ export function CreateProjectForm({ compact = false }: { compact?: boolean }) {
           <Link href="/" className="secondary-button">
             返回
           </Link>
-        ) : <span>填写需求后创建产品档案</span>}
-        <button className="composer-submit" type="submit" disabled={submitting || !requirement.trim()} aria-label="创建产品" aria-busy={submitting}>
+        ) : <span>发送后立即开始分析</span>}
+        <button className="composer-submit" type="submit" disabled={submitting || !requirement.trim()} aria-label="发送并开始分析" aria-busy={submitting}>
           {submitting ? "…" : "↑"}
         </button>
       </div>

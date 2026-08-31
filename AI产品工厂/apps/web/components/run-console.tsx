@@ -14,6 +14,7 @@ import {
   abortProductionRun,
   approveProductionRun,
   getProductionRun,
+  reviseProductionRun,
   steerProductionRun
 } from "@/features/production-run/api";
 import {
@@ -56,6 +57,7 @@ const eventLabels: Record<string, string> = {
   "harness.command.abort": "已请求停止",
   "harness.command.receipt": "运行控制已生效",
   "gate.requested": "需要你确认",
+  "gate.revision_requested": "你已提交修改，正在生成新版本",
   "gate.approved": "你已确认，进入下一步"
 };
 
@@ -287,6 +289,9 @@ export function RunConsole({
   const [events, setEvents] = useState(() => mergeRunEvents([], initialEvents));
   const [approving, setApproving] = useState(false);
   const [approvalError, setApprovalError] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState("");
+  const [revising, setRevising] = useState(false);
+  const [feedbackError, setFeedbackError] = useState<string | null>(null);
   const [harness, setHarness] = useState(initialHarness);
   // The first server and client render must use the same value. Live time starts
   // after hydration so crossing a second boundary cannot change the HTML text.
@@ -404,6 +409,20 @@ export function RunConsole({
     }
   }
 
+  async function revise() {
+    const normalizedFeedback = feedback.trim();
+    if (!normalizedFeedback) return;
+    setRevising(true);
+    setFeedbackError(null);
+    try {
+      const result = await reviseProductionRun(run.id, normalizedFeedback);
+      router.push(`/runs/${result.run.id}`);
+    } catch (error) {
+      setFeedbackError(getErrorMessage(error, "无法根据反馈重新分析"));
+      setRevising(false);
+    }
+  }
+
   return (
     <>
       <section className="simple-progress" aria-label="产品生产进度">
@@ -448,16 +467,34 @@ export function RunConsole({
           ) : null}
           {canApprove && nextAction ? (
             <div className="result-confirmation" aria-labelledby="confirmation-title">
-              <div>
+              <div className="confirmation-copy">
                 <strong id="confirmation-title">{nextAction.title}</strong>
                 <p>确认后会进入下一步并保留当前结果；本阶段不会部署或发布。</p>
               </div>
               <div className="confirmation-actions">
-                <button className="primary-button" type="button" onClick={() => void approve()} disabled={approving} aria-busy={approving}>
+                <button className="primary-button" type="button" onClick={() => void approve()} disabled={approving || revising} aria-busy={approving}>
                   {approving ? "正在进入下一步…" : nextAction.button}
                 </button>
                 {approvalError ? <p className="form-error" role="alert">{approvalError}</p> : null}
               </div>
+              <form className="review-feedback-form" onSubmit={(event) => { event.preventDefault(); void revise(); }}>
+                <label htmlFor={`review-feedback-${run.id}`}>补充回答或修改意见</label>
+                <textarea
+                  id={`review-feedback-${run.id}`}
+                  value={feedback}
+                  onChange={(event) => setFeedback(event.target.value)}
+                  placeholder="回答 AI 提出的问题，或说明需要修改的内容…"
+                  maxLength={2000}
+                  disabled={approving || revising}
+                />
+                <div className="review-feedback-actions">
+                  <span>提交后会重新生成这一步的完整结果，不会直接进入下一步。</span>
+                  <button className="secondary-button" type="submit" disabled={approving || revising || !feedback.trim()} aria-busy={revising}>
+                    {revising ? "正在重新分析…" : "提交并重新分析"}
+                  </button>
+                </div>
+                {feedbackError ? <p className="form-error" role="alert">{feedbackError}</p> : null}
+              </form>
             </div>
           ) : null}
         </section>

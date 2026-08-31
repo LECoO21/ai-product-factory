@@ -122,6 +122,18 @@ const nextPlanningStage: Partial<
 
 const retryableRunStatuses = new Set(["waiting_approval", "succeeded", "failed", "blocked"]);
 
+const revisionTargets: Record<ProductionStage, { stage: ProductionStage; objective: string }> = {
+  intake: { stage: "intake", objective: "结合产品负责人的补充信息重新生成产品理解摘要" },
+  adaptation: { stage: "adaptation", objective: "结合产品负责人的修改意见重新生成技术适配声明" },
+  "stage-design": { stage: "stage-design", objective: "结合产品负责人的修改意见重新生成开发计划和产品基础稿" },
+  implementation: { stage: "implementation", objective: "结合产品负责人的修改意见重新制作第一版可运行产品" },
+  "automated-quality": { stage: "implementation", objective: "根据自动检查后的修改意见修正第一版可运行产品" },
+  "real-acceptance": { stage: "implementation", objective: "根据真实验收反馈修正第一版可运行产品" },
+  "release-preparation": { stage: "release-preparation", objective: "结合产品负责人的修改意见重新生成上线方案，不执行发布" },
+  "release-readiness": { stage: "release-preparation", objective: "根据上线检查反馈补全上线方案，不执行发布" },
+  "release-handoff": { stage: "release-preparation", objective: "根据发布交接反馈修改上线方案，不执行发布" }
+};
+
 export class ProductionController {
   constructor(private readonly runs: ProductionRunStore) {}
 
@@ -181,6 +193,27 @@ export class ProductionController {
     const result = this.runs.approveAndCreateNext(run.id, next.objective, next.stage);
     this.recordApproval(run.id, "product_scope");
     return result;
+  }
+
+  reviseFromFeedback(runId: string, feedback: string) {
+    const run = this.runs.get(runId);
+    if (!run) throw new Error("生产步骤不存在");
+    const normalizedFeedback = feedback.trim();
+    if (!normalizedFeedback) throw new Error("请填写补充回答或修改意见");
+    const events = this.runs.events(run.id);
+    if (!hasConfirmableAgentResult(events)) {
+      throw new Error("AI 结果尚未生成，不能提交修改");
+    }
+    if (events.some((event) => event.type === "gate.approved")) {
+      throw new Error("当前结果已经确认，不能再提交修改");
+    }
+    const target = revisionTargets[run.stage];
+    const objective = [
+      target.objective,
+      "先读取上一版结果，再根据下面的反馈输出完整的新版本，不要只回复修改部分。",
+      `产品负责人的补充回答或修改意见：\n${normalizedFeedback}`
+    ].join("\n\n");
+    return this.runs.createRevision(run.id, normalizedFeedback, objective, target.stage);
   }
 
   retryWithoutResult(runId: string) {

@@ -33,6 +33,12 @@ export interface ProductionRunStore {
   append(runId: string, type: string, payload?: Record<string, unknown>): RunEvent;
   events(runId: string, afterSequence?: number): RunEvent[];
   transition(id: string, status: ProductionRun["status"], error?: string | null): ProductionRun;
+  createRevision(
+    id: string,
+    feedback: string,
+    objective: string,
+    stage?: ProductionStage
+  ): { supersededRun: ProductionRun; revisionRun: ProductionRun };
   approveAndCreateNext(
     id: string,
     nextObjective: string,
@@ -400,6 +406,40 @@ export class SqliteProductionRunStore implements ProductionRunStore {
     const run = this.get(id);
     if (!run) throw new Error(`生产批次无法重新读取：${id}`);
     return run;
+  }
+
+  createRevision(
+    id: string,
+    feedback: string,
+    objective: string,
+    stage?: ProductionStage
+  ) {
+    return this.database.transaction(() => {
+      const run = this.get(id);
+      if (!run) throw new Error(`生产批次不存在：${id}`);
+      const events = this.events(id);
+      const existingRevision = events.find((event) => event.type === "gate.revision_requested");
+      const existingRevisionRunId = existingRevision?.payload.revisionRunId;
+      if (typeof existingRevisionRunId === "string") {
+        const revisionRun = this.get(existingRevisionRunId);
+        if (revisionRun) return { supersededRun: run, revisionRun };
+      }
+      if (run.status !== "waiting_approval" && run.status !== "succeeded") {
+        throw new Error("当前步骤尚未等待确认");
+      }
+      if (events.some((event) => event.type === "gate.approved")) {
+        throw new Error("当前结果已经确认，不能再提交修改");
+      }
+
+      const supersededRun = this.transition(run.id, "cancelled");
+      const revisionRun = this.create(run.projectId, objective, stage ?? run.stage);
+      this.append(run.id, "gate.revision_requested", {
+        feedback,
+        revisionRunId: revisionRun.id,
+        revisionStage: revisionRun.stage
+      });
+      return { supersededRun, revisionRun };
+    })();
   }
 
   approveAndCreateNext(id: string, nextObjective: string, nextStage: ProductionStage) {

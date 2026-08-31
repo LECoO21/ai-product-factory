@@ -48,6 +48,36 @@ const requireNextRun = (run: ProductionRun | null) => {
 };
 
 describe("ProductionController", () => {
+  it("creates one same-stage revision from confirmation feedback", () => {
+    const directory = mkdtempSync(join(tmpdir(), "factory-workflow-"));
+    const databasePath = join(directory, "factory.sqlite");
+    const project = createProject(databasePath);
+    const runs = new SqliteProductionRunStore(databasePath);
+    const intake = runs.create(project.id, "生成产品理解摘要", "intake");
+    appendConfirmableResult(runs, intake.id);
+    runs.transition(intake.id, "waiting_approval");
+    const controller = createProductionController(runs);
+
+    const first = controller.reviseFromFeedback(
+      intake.id,
+      "需要支持搜索、打开、复制和整理，验收标准是三步内打开网址。"
+    );
+    const repeated = controller.reviseFromFeedback(intake.id, "重复提交不会再创建一份");
+
+    expect(first.supersededRun.status).toBe("cancelled");
+    expect(first.revisionRun.stage).toBe("intake");
+    expect(first.revisionRun.status).toBe("ready");
+    expect(first.revisionRun.objective).toContain("需要支持搜索、打开、复制和整理");
+    expect(repeated.revisionRun.id).toBe(first.revisionRun.id);
+    expect(runs.listForProject(project.id)).toHaveLength(2);
+    expect(runs.events(intake.id)).toContainEqual(
+      expect.objectContaining({
+        type: "gate.revision_requested",
+        payload: expect.objectContaining({ revisionRunId: first.revisionRun.id })
+      })
+    );
+  });
+
   it("persists intake approval and creates exactly one adaptation run", () => {
     const directory = mkdtempSync(join(tmpdir(), "factory-workflow-"));
     const databasePath = join(directory, "factory.sqlite");
