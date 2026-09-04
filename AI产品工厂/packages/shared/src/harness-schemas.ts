@@ -42,6 +42,7 @@ export const factoryTaskSchema = z.object({
   maxAttempts: z.number().int().positive(),
   workerId: z.string().nullable(),
   error: z.string().nullable(),
+  expiresAt: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string()
 });
@@ -123,6 +124,39 @@ export const backgroundJobSchema = z.object({
   updatedAt: z.string()
 });
 
+export const harnessRoundSchema = z.object({
+  id: z.string(),
+  harnessRunId: z.string(),
+  round: z.number().int().positive(),
+  decision: z.string(),
+  satisfied: z.array(z.string()),
+  missing: z.array(z.string()),
+  failed: z.array(z.string()),
+  nextAction: z.string(),
+  createdAt: z.string()
+});
+
+export const approvalRequestSchema = z.object({
+  id: z.string(),
+  harnessRunId: z.string(),
+  toolCallId: z.string(),
+  toolName: z.string(),
+  args: z.record(z.string(), z.unknown()),
+  argsFingerprint: z.string(),
+  status: z.enum(["pending", "approved", "denied"]),
+  decidedAt: z.string().nullable(),
+  createdAt: z.string()
+});
+
+export const harnessCheckpointSchema = z.object({
+  id: z.string(),
+  harnessRunId: z.string(),
+  kind: z.string(),
+  status: z.string(),
+  payload: z.record(z.string(), z.unknown()),
+  createdAt: z.string()
+});
+
 export type HarnessRunStatus = z.infer<typeof harnessRunStatusSchema>;
 export type FactoryTaskStatus = z.infer<typeof factoryTaskStatusSchema>;
 export type PermissionLevel = z.infer<typeof permissionLevelSchema>;
@@ -135,3 +169,6 @@ export type ToolInvocation = z.infer<typeof toolInvocationSchema>;
 export type Artifact = z.infer<typeof artifactSchema>;
 export type Evidence = z.infer<typeof evidenceSchema>;
 export type BackgroundJob = z.infer<typeof backgroundJobSchema>;
+export type HarnessRound = z.infer<typeof harnessRoundSchema>;
+export type ApprovalRequest = z.infer<typeof approvalRequestSchema>;
+export type HarnessCheckpoint = z.infer<typeof harnessCheckpointSchema>;

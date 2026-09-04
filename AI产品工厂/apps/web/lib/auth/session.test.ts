@@ -1,69 +1,53 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  createSessionToken,
-  sessionCookieOptions,
-  verifyInviteCode,
-  verifySessionToken
+  isCodexAccountAuthenticated,
+  isFactoryAuthBypassed
 } from "./session";
 
-const originalSecret = process.env.AUTH_SECRET;
-const originalCodes = process.env.INVITE_CODES;
-const originalCookieSecure = process.env.FACTORY_COOKIE_SECURE;
-const originalEnv = process.env.ENV;
+describe("Codex account authentication", () => {
+  afterEach(() => vi.unstubAllEnvs());
 
-describe("factory session", () => {
-  beforeEach(() => {
-    process.env.AUTH_SECRET = "test-secret-with-at-least-thirty-two-characters";
-    process.env.INVITE_CODES = "owner-code";
+  it("requires authentication by default", () => {
+    vi.stubEnv("FACTORY_AUTH_BYPASS", "");
+    expect(isFactoryAuthBypassed()).toBe(false);
   });
 
-  afterEach(() => {
-    if (originalSecret === undefined) delete process.env.AUTH_SECRET;
-    else process.env.AUTH_SECRET = originalSecret;
-    if (originalCodes === undefined) delete process.env.INVITE_CODES;
-    else process.env.INVITE_CODES = originalCodes;
-    if (originalCookieSecure === undefined) delete process.env.FACTORY_COOKIE_SECURE;
-    else process.env.FACTORY_COOKIE_SECURE = originalCookieSecure;
-    if (originalEnv === undefined) delete process.env.ENV;
-    else process.env.ENV = originalEnv;
-    vi.unstubAllEnvs();
+  it("allows only the explicit test bypass value", () => {
+    vi.stubEnv("FACTORY_AUTH_BYPASS", "true");
+    expect(isFactoryAuthBypassed()).toBe(true);
+    vi.stubEnv("FACTORY_AUTH_BYPASS", "1");
+    expect(isFactoryAuthBypassed()).toBe(false);
   });
 
-  it("accepts only a configured invite code", () => {
-    expect(verifyInviteCode("owner-code")).toBe(true);
-    expect(verifyInviteCode("wrong-code")).toBe(false);
+  it("accepts an authenticated ChatGPT account", () => {
+    expect(isCodexAccountAuthenticated({
+      authenticated: true,
+      accountType: "chatgpt",
+      capturedAt: "2026-09-02T08:00:00.000Z"
+    }, Date.parse("2026-09-02T08:00:30.000Z"))).toBe(true);
   });
 
-  it("accepts a signed session before expiry", () => {
-    const now = Date.UTC(2026, 7, 27, 8);
-    expect(verifySessionToken(createSessionToken(now), now)?.subject).toBe("owner");
-  });
-
-  it("rejects tampered and expired sessions", () => {
-    const now = Date.UTC(2026, 7, 27, 8);
-    const token = createSessionToken(now);
-    expect(verifySessionToken(`${token}changed`, now)).toBeNull();
-    expect(verifySessionToken(token, now + 9 * 60 * 60 * 1000)).toBeNull();
-  });
-
-  it("allows an explicit insecure cookie only for local HTTP acceptance", () => {
-    vi.stubEnv("NODE_ENV", "production");
-    delete process.env.ENV;
-    process.env.FACTORY_COOKIE_SECURE = "false";
-    expect(sessionCookieOptions().secure).toBe(false);
-  });
-
-  it("always keeps cookies secure in the production deployment environment", () => {
-    vi.stubEnv("NODE_ENV", "production");
-    process.env.ENV = "prod";
-    process.env.FACTORY_COOKIE_SECURE = "false";
-    expect(sessionCookieOptions().secure).toBe(true);
-  });
-
-  it("does not treat an empty local override as permission to weaken cookies", () => {
-    vi.stubEnv("NODE_ENV", "production");
-    delete process.env.ENV;
-    process.env.FACTORY_COOKIE_SECURE = "";
-    expect(sessionCookieOptions().secure).toBe(true);
+  it("rejects missing, logged-out, non-ChatGPT, and stale account states", () => {
+    expect(isCodexAccountAuthenticated(null)).toBe(false);
+    expect(isCodexAccountAuthenticated({
+      authenticated: false,
+      accountType: null,
+      capturedAt: "2026-09-02T08:00:00.000Z"
+    })).toBe(false);
+    expect(isCodexAccountAuthenticated({
+      authenticated: true,
+      accountType: "apiKey",
+      capturedAt: "2026-09-02T08:00:00.000Z"
+    })).toBe(false);
+    expect(isCodexAccountAuthenticated({
+      authenticated: true,
+      accountType: "chatgpt",
+      capturedAt: "2026-09-02T08:00:00.000Z"
+    }, Date.parse("2026-09-02T08:01:00.000Z"))).toBe(false);
+    expect(isCodexAccountAuthenticated({
+      authenticated: true,
+      accountType: "chatgpt",
+      capturedAt: "invalid"
+    })).toBe(false);
   });
 });

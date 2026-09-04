@@ -93,7 +93,7 @@ export function getEmptyRunPresentation(
       };
     case "cancelled":
       return {
-        message: "这一步已取消。",
+        message: "产品流程已终止；如需继续，请新建产品。",
         canRetry: false,
         showActivity: false,
         statusOverride: null

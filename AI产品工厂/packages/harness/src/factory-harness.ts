@@ -46,6 +46,7 @@ export type FactoryHarnessOptions = {
   records: SqliteHarnessRecordStore;
   verifier: CompletionVerifier;
   prepare(task: FactoryTask, run: HarnessRun): Promise<PreparedHarnessRun>;
+  maxRounds?: number;
 };
 
 export class FactoryHarness {
@@ -72,58 +73,162 @@ export class FactoryHarness {
       taskId: task.id,
       sessionPath: `harness-sessions/${task.runId}.jsonl`,
       promptVersion: "factory-harness-v1.0.0",
-      model: "deepseek-v4-flash"
+      model: "account-default"
     });
     if (run.status === "succeeded") return this.snapshot(run, task);
 
     this.options.records.updateTask(task.id, "in_progress");
     run = this.options.records.transitionHarnessRun(run.id, "running");
-    let prepared: PreparedHarnessRun;
+    const prepared = await this.prepareOrBlock(task, run);
+    if (!prepared) {
+      return this.snapshot(this.options.records.getHarnessRun(run.id)!, this.options.records.getTask(task.id)!);
+    }
+    return this.executeRounds(task, run, prepared, 1);
+  }
+
+  async resume(taskId: string): Promise<HarnessRunSnapshot> {
+    const task = this.options.records.getTask(taskId);
+    if (!task) throw new Error(`Task 不存在：${taskId}`);
+    const run = this.options.records.getHarnessRunForProductionRun(task.runId);
+    if (!run) throw new Error("Harness 运行不存在");
+    if (run.status !== "waiting_user") throw new Error("当前没有等待审批的运行");
+
+    const pending = this.options.records.listPendingApprovals(run.id);
+    if (pending.length > 0) return this.snapshot(run, task);
+
+    this.options.records.updateTask(task.id, "in_progress");
+    const prepared = await this.prepareOrBlock(task, run);
+    if (!prepared) {
+      return this.snapshot(this.options.records.getHarnessRun(run.id)!, this.options.records.getTask(task.id)!);
+    }
+    const completedRounds = this.options.records.listHarnessRounds(run.id).length;
+    return this.executeRounds(task, run, prepared, completedRounds + 1);
+  }
+
+  private async prepareOrBlock(task: FactoryTask, run: HarnessRun): Promise<PreparedHarnessRun | null> {
     try {
-      prepared = await this.options.prepare(task, run);
+      return await this.options.prepare(task, run);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Harness 准备失败";
       this.options.records.updateTask(task.id, "blocked", message);
-      run = this.options.records.transitionHarnessRun(run.id, "blocked", message);
-      return this.snapshot(run, this.options.records.getTask(task.id)!);
+      this.options.records.transitionHarnessRun(run.id, "blocked", message);
+      return null;
     }
+  }
 
-    this.active.set(run.id, prepared.driver);
-    let outcome: HarnessDriverOutcome;
-    try {
-      outcome = await prepared.driver.run({ prompt: prepared.prompt, execute: prepared.execute });
-    } catch (error) {
-      outcome = { kind: "failed", summary: error instanceof Error ? error.message : "Harness 执行失败" };
-    } finally {
-      this.active.delete(run.id);
-    }
+  private async executeRounds(
+    task: FactoryTask,
+    run: HarnessRun,
+    prepared: PreparedHarnessRun,
+    startRound: number
+  ): Promise<HarnessRunSnapshot> {
+    const maxRounds = this.options.maxRounds ?? 3;
+    let prompt = prepared.prompt;
+    let currentRun = run;
 
-    if (outcome.kind === "aborted") {
-      this.options.records.updateTask(task.id, "cancelled", outcome.summary);
-      run = this.options.records.transitionHarnessRun(run.id, "cancelled", outcome.summary);
-      return this.snapshot(run, this.options.records.getTask(task.id)!);
-    }
-    if (outcome.kind === "suspended") {
-      run = this.options.records.transitionHarnessRun(run.id, "waiting_user", outcome.summary);
-      return this.snapshot(run, this.options.records.getTask(task.id)!);
-    }
-    if (outcome.kind === "failed") {
-      this.options.records.updateTask(task.id, "failed", outcome.summary);
-      run = this.options.records.transitionHarnessRun(run.id, "failed", outcome.summary);
-      return this.snapshot(run, this.options.records.getTask(task.id)!);
-    }
+    for (let round = startRound; round <= maxRounds; round += 1) {
+      this.active.set(currentRun.id, prepared.driver);
+      let outcome: HarnessDriverOutcome;
+      try {
+        outcome = await prepared.driver.run({ prompt, execute: prepared.execute });
+      } catch (error) {
+        outcome = { kind: "failed", summary: error instanceof Error ? error.message : "Harness 执行失败" };
+      } finally {
+        this.active.delete(currentRun.id);
+      }
 
-    run = this.options.records.transitionHarnessRun(run.id, "verifying");
-    const decision = this.options.verifier.verify(run.id, prepared.requiredCriteria);
-    if (decision.decision === "complete") {
-      this.options.records.updateTask(task.id, "completed");
-      run = this.options.records.transitionHarnessRun(run.id, "succeeded", "completion_goal_satisfied");
-    } else {
+      if (outcome.kind === "aborted") {
+        this.options.records.updateTask(task.id, "cancelled", outcome.summary);
+        currentRun = this.options.records.transitionHarnessRun(currentRun.id, "cancelled", outcome.summary);
+        return this.snapshot(currentRun, this.options.records.getTask(task.id)!);
+      }
+      if (outcome.kind === "suspended") {
+        currentRun = this.options.records.transitionHarnessRun(currentRun.id, "waiting_user", outcome.summary);
+        return this.snapshot(currentRun, this.options.records.getTask(task.id)!);
+      }
+      if (outcome.kind === "failed") {
+        this.options.records.updateTask(task.id, "failed", outcome.summary);
+        currentRun = this.options.records.transitionHarnessRun(currentRun.id, "failed", outcome.summary);
+        return this.snapshot(currentRun, this.options.records.getTask(task.id)!);
+      }
+
+      const pendingApprovals = this.options.records.listPendingApprovals(currentRun.id);
+      if (pendingApprovals.length > 0) {
+        currentRun = this.options.records.transitionHarnessRun(currentRun.id, "waiting_user", "有待审批的重大动作");
+        return this.snapshot(currentRun, this.options.records.getTask(task.id)!);
+      }
+
+      currentRun = this.options.records.transitionHarnessRun(currentRun.id, "verifying");
+      const decision = this.options.verifier.verify(currentRun.id, prepared.requiredCriteria);
+      const decisionFields = decision.decision === "complete"
+        ? { satisfied: [] as string[], missing: [] as string[], failed: [] as string[], nextAction: "" }
+        : decision;
+      this.options.records.recordHarnessRound({
+        harnessRunId: currentRun.id,
+        round,
+        decision: decision.decision,
+        satisfied: decisionFields.satisfied,
+        missing: decisionFields.missing,
+        failed: decisionFields.failed,
+        nextAction: decisionFields.nextAction
+      });
+      this.options.records.createCheckpoint({
+        harnessRunId: currentRun.id,
+        kind: "round-verified",
+        status: decision.decision,
+        payload: {
+          round,
+          satisfied: decisionFields.satisfied,
+          missing: decisionFields.missing,
+          failed: decisionFields.failed
+        }
+      });
+
+      if (decision.decision === "complete") {
+        this.options.records.updateTask(task.id, "completed");
+        currentRun = this.options.records.transitionHarnessRun(currentRun.id, "succeeded", "completion_goal_satisfied");
+        return this.snapshot(currentRun, this.options.records.getTask(task.id)!);
+      }
+      if (decision.decision === "continue") {
+        prompt = this.buildContinuationPrompt(prepared.prompt, decision, round, maxRounds);
+        continue;
+      }
       const reason = [...decision.failed, ...decision.missing].join(", ") || decision.nextAction;
       this.options.records.updateTask(task.id, "failed", reason);
-      run = this.options.records.transitionHarnessRun(run.id, "failed", reason);
+      currentRun = this.options.records.transitionHarnessRun(currentRun.id, "failed", reason);
+      return this.snapshot(currentRun, this.options.records.getTask(task.id)!);
     }
-    return this.snapshot(run, this.options.records.getTask(task.id)!);
+
+    const exhaustedReason = `${maxRounds} 轮仍未满足完成目标`;
+    this.options.records.recordHarnessRound({
+      harnessRunId: currentRun.id,
+      round: maxRounds + 1,
+      decision: "budget_exhausted",
+      satisfied: [],
+      missing: [],
+      failed: [],
+      nextAction: exhaustedReason
+    });
+    this.options.records.updateTask(task.id, "failed", exhaustedReason);
+    currentRun = this.options.records.transitionHarnessRun(currentRun.id, "failed", exhaustedReason);
+    return this.snapshot(currentRun, this.options.records.getTask(task.id)!);
+  }
+
+  private buildContinuationPrompt(
+    originalPrompt: string,
+    decision: { missing: string[]; failed: string[]; nextAction: string },
+    round: number,
+    maxRounds: number
+  ): string {
+    return [
+      originalPrompt,
+      "",
+      `第 ${round} 轮检查未通过，需要继续：`,
+      `- 仍缺证据：${decision.missing.length > 0 ? decision.missing.join("、") : "无"}`,
+      `- 失败证据：${decision.failed.length > 0 ? decision.failed.join("、") : "无"}`,
+      `- 下一步：${decision.nextAction}`,
+      `这是第 ${round + 1}/${maxRounds} 轮。请只补齐上述缺口，复用已完成的工具结果，不要从头重做。`
+    ].join("\n");
   }
 
   async steer(harnessRunId: string, message: string): Promise<CommandReceipt> {

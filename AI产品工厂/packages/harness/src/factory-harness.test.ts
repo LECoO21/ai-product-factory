@@ -78,7 +78,8 @@ describe("FactoryHarness deterministic loop", () => {
         createCoreToolDefinitions({
           authority: new ManualAuthority(projectRoot), workspace,
           commands: new ControlledCommandRunner(workspaceRoot), records,
-          harnessRunId: run.id, taskId: task.id, reportRoot: join(directory, "reports", run.id)
+          harnessRunId: run.id, taskId: task.id, reportRoot: join(directory, "reports", run.id),
+          completionCriteria: ["CG-06"]
         }).forEach((definition) => gateway.register(definition));
         return {
           driver: new FailureRepairDriver(workspace),

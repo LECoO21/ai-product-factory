@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { mediaProductionStationSchema } from "./media";
 
 export {
   PRODUCT_PROTOTYPE_END,
@@ -10,6 +11,7 @@ export {
 } from "./product-prototype";
 
 export * from "./harness-schemas";
+export * from "./media";
 
 export const capabilityPackSchema = z.enum([
   "web-interface",
@@ -61,6 +63,7 @@ export const productionBlueprintSchema = z.object({
   id: z.string(),
   version: z.number().int().positive(),
   capabilityPacks: z.array(capabilityPackSchema),
+  mediaStations: z.array(mediaProductionStationSchema).optional(),
   stages: z.array(blueprintStageSchema),
   assumptions: z.array(z.string()),
   unsupportedCapabilities: z.array(z.string()),
@@ -175,6 +178,9 @@ export const hasConfirmableAgentResult = (events: AgentResultEvent[]) => {
 
 export type AgentAssignment = {
   runId: string;
+  scopeId?: string;
+  cwd?: string;
+  threadId?: string | null;
   systemPrompt: string;
   prompt: string;
   model: string;
@@ -188,7 +194,10 @@ export type AgentRuntimeEvent = {
     | "text.delta"
     | "tool.started"
     | "tool.completed"
+    | "plan.updated"
+    | "artifact.available"
     | "agent.completed"
+    | "agent.interrupted"
     | "agent.failed";
   payload: Record<string, unknown>;
   occurredAt: string;

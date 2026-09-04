@@ -17,7 +17,7 @@ const createContext = (p1Approved = true) => {
     taskId: task.id,
     sessionPath: "session.jsonl",
     promptVersion: "1.0.0",
-    model: "deepseek-v4-flash"
+    model: "account-default"
   });
   return {
     directory,

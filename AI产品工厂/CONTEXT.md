@@ -38,9 +38,25 @@ _Avoid_: 产品模板、插件
 
 ## Agent 与执行
 
+**OpenAI 账户会话（OpenAI Account Session）**：
+用户通过 Codex App Server 完成的 ChatGPT/OpenAI 登录状态。产品工厂只能读取脱敏状态，不能接触、复制或持久化访问令牌。
+_Avoid_: 邀请码、DeepSeek Key、浏览器里的模型 Token
+
+**Codex App Server Adapter**：
+服务端管理 Codex App Server 进程与 JSON-RPC 的边界，负责认证、Thread/Turn、流式事件、工具请求和错误归一化。
+_Avoid_: 模型 SDK、前端直连 OpenAI、生产控制器
+
 **工厂 Agent（Factory Agent）**：
-在当前生产目标和授权边界内进行推理、规划并请求工具行动的模型驱动执行者；它不是生产状态或质量结论的事实来源。
+由 Codex 驱动、在当前生产目标和授权边界内进行推理、规划并请求工具行动的执行者；它不是生产状态或质量结论的事实来源。
 _Avoid_: 总控大模型、聊天机器人、生产控制器
+
+**素材生产工位（Media Production Station）**：
+为图片、音频或 3D 产物定义输入、工具能力、产物格式和验收条件的专用工位。Codex 负责规划和调用，具体素材工具负责真实生产。
+_Avoid_: 一段媒体 Prompt、假素材、Codex 原生万能生成
+
+**素材能力状态（Media Capability Status）**：
+某类素材工位当前是否存在真实可调用工具的事实，取值为可用或未配置；未配置不能用示例文件冒充成功。
+_Avoid_: 模型应该能做、先返回占位图
 
 **Agent Harness**：
 承载工厂 Agent 的受控执行环境，由工具、知识、观察、行动接口和权限共同组成。

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { SqliteProductionRunStore } from "@factory/records";
 import { RuntimeCommandGateway } from "@factory/runtime-core";
 import { apiError } from "@/lib/api/server-error";
+import { finalizeProductFlowResources } from "@/lib/product-flow-lifecycle.server";
 
 const inputSchema = z.object({
   reason: z.string().trim().min(1).max(500),
@@ -22,6 +23,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       event.payload.idempotencyKey === parsed.data.idempotencyKey
   );
   if (existing) {
+    finalizeProductFlowResources(run.projectId);
     return NextResponse.json({
       receipt: {
         accepted: true,
@@ -34,6 +36,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (run.status === "ready" || run.status === "waiting_approval" || run.status === "succeeded") {
     const command = store.append(id, "harness.command.abort", parsed.data);
     store.transition(id, "cancelled", parsed.data.reason);
+    finalizeProductFlowResources(run.projectId);
     return NextResponse.json({
       receipt: {
         accepted: true,
@@ -54,6 +57,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       turnId: run.id,
       reason: parsed.data.reason
     });
+    finalizeProductFlowResources(run.projectId);
     return NextResponse.json({ receipt });
   } catch (error) {
     return apiError(

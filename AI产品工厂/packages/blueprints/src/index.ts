@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import type {
   BlueprintStage,
   CapabilityPack,
+  MediaKind,
+  MediaProductionStation,
   ProductProfile,
   ProductionBlueprint
 } from "@factory/shared";
@@ -24,6 +26,69 @@ const addUnique = (values: string[], value: string) => {
 };
 
 const addPack = (packs: Set<CapabilityPack>, pack: CapabilityPack) => packs.add(pack);
+
+const mediaStationByKind: Record<MediaKind, MediaProductionStation> = {
+  image: {
+    id: "image-production",
+    kind: "image",
+    title: "图片素材生产",
+    requiredToolCapability: "image-generation",
+    requiredChecks: {
+      implementation: ["image-tool-capability", "image-artifact-integrity", "image-provenance"],
+      acceptance: ["image-preview", "image-human-review"]
+    }
+  },
+  audio: {
+    id: "audio-production",
+    kind: "audio",
+    title: "音频素材生产",
+    requiredToolCapability: "audio-generation",
+    requiredChecks: {
+      implementation: ["audio-tool-capability", "audio-decode-check", "audio-provenance"],
+      acceptance: ["audio-playback", "audio-human-review"]
+    }
+  },
+  model3d: {
+    id: "model3d-production",
+    kind: "model3d",
+    title: "3D 素材生产",
+    requiredToolCapability: "model3d-generation",
+    requiredChecks: {
+      implementation: ["model3d-tool-capability", "model3d-parse-check", "model3d-provenance"],
+      acceptance: ["model3d-preview", "model3d-human-review"]
+    }
+  }
+};
+
+const mediaSignals: Array<{ kind: MediaKind; rules: SignalRule[] }> = [
+  {
+    kind: "image",
+    rules: [
+      {
+        pattern: /生成图片|生成图像|制作图片|图片素材|图像素材|插画|海报|图标|纹理|贴图|精灵图|image generation|generate images?|illustration|texture|sprite/,
+        conclusion: "需要生产图片素材"
+      }
+    ]
+  },
+  {
+    kind: "audio",
+    rules: [
+      {
+        pattern: /生成音频|制作音频|音频素材|语音合成|配音|旁白|音效|配乐|背景音乐|\btts\b|audio generation|sound effects?|music generation/,
+        conclusion: "需要生产音频素材"
+      }
+    ]
+  },
+  {
+    kind: "model3d",
+    rules: [
+      {
+        pattern: /\b3d\b|3d模型|3d素材|三维模型|三维素材|三维资产|立体模型|网格模型|\bmesh(?:es)?\b|\bglb\b|\bgltf\b|\bfbx\b/,
+        conclusion: "需要生产 3D 素材"
+      }
+    ]
+  }
+];
 
 const baseStages: BlueprintStage[] = [
   {
@@ -185,12 +250,26 @@ export class RuleBasedBlueprintCompiler implements BlueprintCompiler {
       record("capability", rag.pattern.source, rag.conclusion);
     }
 
-    const multimedia = hasSignal(text, [
-      { pattern: /图片|图像|音频|语音|视频|摄像头|麦克风|image|audio|video/, conclusion: "涉及多媒体资产" }
+    const detectedMediaKinds = mediaSignals.flatMap(({ kind, rules }) => {
+      const signal = hasSignal(text, rules);
+      if (!signal) return [];
+      addUnique(profile.artifactKinds, kind);
+      record("artifact", signal.pattern.source, signal.conclusion);
+      return [kind];
+    });
+    const otherMultimedia = hasSignal(text, [
+      {
+        pattern: /生成视频|视频素材|摄像头|麦克风|video generation|generate videos?/,
+        conclusion: "涉及尚未细分工位的多媒体资产"
+      }
     ]);
-    if (multimedia) {
+    if (otherMultimedia) {
       addUnique(profile.artifactKinds, "multimedia");
-      record("artifact", multimedia.pattern.source, multimedia.conclusion);
+      record("artifact", otherMultimedia.pattern.source, otherMultimedia.conclusion);
+    }
+    if (detectedMediaKinds.length > 0) {
+      addUnique(profile.executionTraits, "long-running");
+      addUnique(profile.dataTraits, "recoverable-task-state");
     }
 
     const accounts = hasSignal(text, [
@@ -238,7 +317,13 @@ export class RuleBasedBlueprintCompiler implements BlueprintCompiler {
     if (profile.aiRole === "core" || profile.aiRole === "supporting") addPack(packs, "agent-runtime");
     if (profile.executionTraits.includes("long-running")) addPack(packs, "long-running-task");
     if (profile.qualityModes.includes("retrieval-evaluation")) addPack(packs, "rag");
-    if (profile.artifactKinds.includes("multimedia")) addPack(packs, "multimedia");
+    const mediaStations = mediaSignals
+      .map(({ kind }) => kind)
+      .filter((kind) => profile.artifactKinds.includes(kind))
+      .map((kind) => mediaStationByKind[kind]);
+    if (profile.artifactKinds.includes("multimedia") || mediaStations.length > 0) {
+      addPack(packs, "multimedia");
+    }
     if (profile.qualityModes.includes("playability-review")) addPack(packs, "game-experience");
     if (profile.dataTraits.includes("user-owned-data")) addPack(packs, "accounts-and-tenancy");
     if (profile.riskTraits.includes("approval-required")) addPack(packs, "high-risk-actions");
@@ -262,13 +347,27 @@ export class RuleBasedBlueprintCompiler implements BlueprintCompiler {
     if (packs.has("web-interface")) acceptance?.requiredChecks.push("browser-e2e", "responsive-check");
     if (packs.has("rag")) acceptance?.requiredChecks.push("retrieval-evaluation", "citation-check");
     if (packs.has("high-risk-actions")) acceptance?.requiredChecks.push("human-impact-confirmation");
+    for (const station of mediaStations) {
+      station.requiredChecks.implementation.forEach((check) =>
+        addUnique(implementation?.requiredChecks ?? [], check)
+      );
+      station.requiredChecks.acceptance.forEach((check) =>
+        addUnique(acceptance?.requiredChecks ?? [], check)
+      );
+    }
 
     return {
       id: randomUUID(),
       version: 1,
       capabilityPacks: [...packs],
+      mediaStations,
       stages,
-      assumptions: ["产品画像由确定性规则生成，进入生产前需要 Agent 校正和用户确认。"],
+      assumptions: [
+        "产品画像由确定性规则生成，进入生产前需要 Agent 校正和用户确认。",
+        ...(mediaStations.length > 0
+          ? ["媒体工位只声明所需工具能力；运行时必须验证真实工具可用性，未接入时停止而不是伪造产物。"]
+          : [])
+      ],
       unsupportedCapabilities: [],
       generatedAt: new Date().toISOString()
     };

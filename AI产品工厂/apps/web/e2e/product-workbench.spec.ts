@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 
-type Fixtures = { confirmableRunId: string; failedRunId: string };
+type Fixtures = { confirmableRunId: string; failedRunId: string; secondStageRunId: string };
 
 const fixtures = (): Fixtures => {
   const dataDir = process.env.FACTORY_E2E_DATA_DIR;
@@ -30,28 +30,26 @@ test("creates one product, starts one run, and restores it after refresh", async
   const requirement = page.getByLabel("描述产品需求");
 
   await requirement.fill("需求太短");
-  await page.getByRole("button", { name: "创建产品" }).click();
+  await page.getByRole("button", { name: "发送并开始分析" }).click();
   await expect(page.getByText("请至少填写 20 个字符", { exact: false })).toBeVisible();
 
   const projectName = "E2E 键盘创建的通用产品";
   await requirement.fill(`${projectName}\n帮助用户整理长文、保存历史结果并导出结构化摘要。`);
   await requirement.press("Tab");
   await page.keyboard.press("Tab");
-  const createButton = page.getByRole("button", { name: "创建产品" });
-  await expect(createButton).toBeFocused();
+  const sendButton = page.getByRole("button", { name: "发送并开始分析" });
+  await expect(sendButton).toBeFocused();
   await page.keyboard.press("Enter");
-  await expect(page).toHaveURL(/\/projects\/[a-f0-9-]+$/);
+  await expect(page).toHaveURL(/\/runs\/[a-f0-9-]+$/);
   await expect(page.getByRole("heading", { name: projectName })).toBeVisible();
 
   const projectsResponse = await page.request.get("/api/projects");
   const projects = await projectsResponse.json() as { projects: Array<{ name: string }> };
   expect(projects.projects.filter((project) => project.name === projectName)).toHaveLength(1);
 
-  await page.getByRole("button", { name: "开始分析" }).click();
-  await expect(page).toHaveURL(/\/runs\/[a-f0-9-]+$/);
   await expect(page.getByText("等待开始", { exact: true }).first()).toBeVisible();
   await page.reload();
-  await expect(page.getByRole("heading", { name: "理解产品" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: projectName })).toBeVisible();
   await expect(page.getByText("等待开始", { exact: true }).first()).toBeVisible();
   expect(errors).toEqual([]);
 });
@@ -88,6 +86,29 @@ test("preserves failed output without showing a confirmation action", async ({ p
   await expect(page.getByText("已有的部分分析结果", { exact: false })).toBeVisible();
   await expect(page.getByRole("button", { name: "重新分析" })).toBeVisible();
   await expect(page.getByText("确认理解，进入技术方案")).toHaveCount(0);
+});
+
+test("enters the second stage as a new Run under the same product", async ({ page }) => {
+  const sourceRunId = fixtures().secondStageRunId;
+  const sourceResponse = await page.request.get(`/api/runs/${sourceRunId}`);
+  const source = await sourceResponse.json() as { run: { id: string; projectId: string } };
+  await page.goto(`/runs/${sourceRunId}`);
+
+  await page.getByRole("button", { name: "确认理解，进入技术方案" }).click();
+  await page.waitForURL((url) =>
+    /\/runs\/[a-f0-9-]+$/.test(url.pathname) && !url.pathname.endsWith(sourceRunId)
+  );
+  await expect(page.locator(".simple-progress li.current")).toContainText("确定方案");
+  await expect(page.getByText("等待开始", { exact: true }).first()).toBeVisible();
+
+  const nextRunId = page.url().split("/").at(-1);
+  expect(nextRunId).toBeTruthy();
+  expect(nextRunId).not.toBe(source.run.id);
+  const nextResponse = await page.request.get(`/api/runs/${nextRunId}`);
+  const next = await nextResponse.json() as {
+    run: { id: string; projectId: string; stage: string };
+  };
+  expect(next.run).toMatchObject({ projectId: source.run.projectId, stage: "adaptation" });
 });
 
 test("reads the real run status before reconnecting an interrupted event stream", async ({ page }) => {

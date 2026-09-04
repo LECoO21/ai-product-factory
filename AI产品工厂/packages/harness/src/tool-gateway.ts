@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { existsSync, realpathSync } from "node:fs";
 import { basename, isAbsolute, relative, resolve, sep } from "node:path";
 import { z } from "zod";
@@ -30,6 +31,25 @@ export type HarnessToolDefinition = {
   execute(args: Record<string, unknown>, signal?: AbortSignal): Promise<HarnessToolExecution>;
 };
 
+export type ToolGateContext = {
+  harnessRunId: string;
+  toolCallId: string;
+  toolName: string;
+  args: Record<string, unknown>;
+  permission: PermissionLevel;
+  definition: HarnessToolDefinition | undefined;
+};
+
+export type PreToolUseResult =
+  | { allow: true }
+  | { allow: false; status: Exclude<ToolInvocationStatus, "started">; summary: string; data?: unknown };
+
+export type PreToolUseHook = (context: ToolGateContext) => PreToolUseResult | Promise<PreToolUseResult>;
+
+export type PostToolUseHook = (
+  context: ToolGateContext & { status: Exclude<ToolInvocationStatus, "started">; summary: string; data?: unknown }
+) => void | Promise<void>;
+
 export type ToolGatewayOptions = {
   records: SqliteHarnessRecordStore;
   workspaceRoot: string;
@@ -45,7 +65,6 @@ const p2Names = new Set([
   "billing.purchase",
   "release.deploy"
 ]);
-const p3Names = new Set(["secret.read", "manual.modify", "policy.bypass"]);
 const secretNames = new Set([".env", ".env.local", ".env.production"]);
 const manualNames = new Set([
   "AI产品Vibe Coding通用技术栈手册.md",
@@ -64,6 +83,9 @@ const redactArgs = (value: unknown): unknown => {
   ]));
 };
 
+const argsFingerprint = (args: Record<string, unknown>) =>
+  createHash("sha256").update(JSON.stringify(args)).digest("hex");
+
 const pathValues = (args: Record<string, unknown>) =>
   Object.entries(args).flatMap(([key, value]) => {
     if (!/(^path$|paths$|cwd$)/i.test(key)) return [];
@@ -74,14 +96,63 @@ const pathValues = (args: Record<string, unknown>) =>
 export class ToolGateway {
   private readonly tools = new Map<string, HarnessToolDefinition>();
   private readonly canonicalRoot: string;
+  private readonly preHooks: PreToolUseHook[] = [];
+  private readonly postHooks: PostToolUseHook[] = [];
 
   constructor(private readonly options: ToolGatewayOptions) {
     this.canonicalRoot = realpathSync(options.workspaceRoot);
+    this.preHooks.push(
+      (context) => this.permissionGate(context),
+      (context) => this.pathSafetyGate(context)
+    );
   }
 
   register(definition: HarnessToolDefinition) {
     if (this.tools.has(definition.name)) throw new Error(`工具重复注册：${definition.name}`);
     this.tools.set(definition.name, definition);
+  }
+
+  addPreHook(hook: PreToolUseHook) {
+    this.preHooks.push(hook);
+  }
+
+  addPostHook(hook: PostToolUseHook) {
+    this.postHooks.push(hook);
+  }
+
+  private permissionGate(context: ToolGateContext): PreToolUseResult {
+    const { permission } = context;
+    if (permission === "P3") {
+      return { allow: false, status: "denied", summary: "该动作超出永久安全边界，未执行" };
+    }
+    if (permission === "P2") {
+      const fingerprint = argsFingerprint(context.args);
+      const prior = this.options.records.getApprovalDecision(context.harnessRunId, context.toolName, fingerprint);
+      if (prior === "denied") {
+        return { allow: false, status: "denied", summary: "该动作已由产品负责人拒绝，未执行" };
+      }
+      if (prior === "approved") {
+        return { allow: false, status: "succeeded", summary: "该动作已获批准，但对应工具尚未注册真实实现" };
+      }
+      this.options.records.createApprovalRequest({
+        harnessRunId: context.harnessRunId,
+        toolCallId: context.toolCallId,
+        toolName: context.toolName,
+        args: redactArgs(context.args) as Record<string, unknown>,
+        argsFingerprint: fingerprint
+      });
+      return { allow: false, status: "approval_required", summary: "该重大动作需要产品负责人批准，已暂停等待确认" };
+    }
+    if (permission === "P1" && !this.options.p1Approved) {
+      return { allow: false, status: "denied", summary: "G6 尚未确认，P1 工具未执行" };
+    }
+    return { allow: true };
+  }
+
+  private pathSafetyGate(context: ToolGateContext): PreToolUseResult {
+    const violation = this.pathViolation(context.args);
+    if (violation) return { allow: false, status: "denied", summary: violation };
+    return { allow: true };
   }
 
   private pathViolation(args: Record<string, unknown>): string | null {
@@ -137,13 +208,22 @@ export class ToolGateway {
       return envelope;
     };
 
-    if (permission === "P2") return finish("approval_required", "该重大动作需要重新确认生产单，未执行");
-    if (permission === "P3") return finish("denied", "该动作超出永久安全边界，未执行");
-    const violation = this.pathViolation(input.args);
-    if (violation) return finish("denied", violation);
-    if (permission === "P1" && !this.options.p1Approved) {
-      return finish("denied", "G6 尚未确认，P1 工具未执行");
+    const context: ToolGateContext = {
+      harnessRunId: input.harnessRunId,
+      toolCallId: input.toolCallId,
+      toolName: input.toolName,
+      args: input.args,
+      permission,
+      definition
+    };
+
+    for (const hook of this.preHooks) {
+      const decision = await hook(context);
+      if (!decision.allow) {
+        return finish(decision.status, decision.summary, decision.data);
+      }
     }
+
     const parsed = definition!.schema.safeParse(input.args);
     if (!parsed.success || !parsed.data || typeof parsed.data !== "object") {
       return finish("failed", "工具参数校验失败", { issues: parsed.success ? [] : parsed.error.issues });
@@ -151,6 +231,9 @@ export class ToolGateway {
 
     try {
       const result = await definition!.execute(parsed.data as Record<string, unknown>, input.signal);
+      for (const hook of this.postHooks) {
+        await hook({ ...context, status: "succeeded", summary: result.summary, data: result.data });
+      }
       const completedAt = new Date().toISOString();
       const envelope: ToolResultEnvelope = {
         toolCallId: input.toolCallId,

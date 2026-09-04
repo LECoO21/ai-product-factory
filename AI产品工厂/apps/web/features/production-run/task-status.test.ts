@@ -31,5 +31,9 @@ describe("getTaskStatusPresentation", () => {
     });
     expect(getTaskStatusPresentation("waiting_user").label).toBe("等你确认");
     expect(getTaskStatusPresentation("disconnected").label).toBe("正在恢复连接");
+    expect(getTaskStatusPresentation("cancelled")).toMatchObject({
+      now: expect.stringContaining("产品流程已终止"),
+      action: expect.stringContaining("新建一个产品")
+    });
   });
 });

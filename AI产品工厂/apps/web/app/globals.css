@@ -333,24 +333,39 @@ summary {
   gap: 12px;
 }
 
-.login-form label {
+.login-status {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-hover);
+  color: var(--muted);
   font-size: 13px;
 }
 
-.login-form input {
-  min-height: 48px;
-  padding: 0 14px;
-  border: 1px solid var(--line-strong);
-  border-radius: 8px;
-  background: var(--surface);
+.official-login-link {
+  width: fit-content;
   color: var(--ink);
-  font: inherit;
+  font-size: 13px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
-.login-form button {
+.login-actions {
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.login-actions button {
   width: 100%;
   justify-content: center;
-  margin-top: 8px;
+}
+
+.login-privacy {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 11px;
 }
 
 .sidebar-foot > span:first-child {

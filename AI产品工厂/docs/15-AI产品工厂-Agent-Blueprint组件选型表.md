@@ -1,12 +1,12 @@
 # AI 产品工厂｜Agent Blueprint 组件选型表 V1.0
 
-> 文档状态：G4 已确认
+> 文档状态：G4 已确认；2026-09-02 Codex App Server 迁移要求已合并
 >
 > 已确认输入：`docs/12-AI产品工厂-产品需求文档-PRD.md`、`docs/13-AI产品工厂-技术适配声明.md`、`docs/14-AI产品工厂-Harness五要素领域骨架.md`
 >
 > 规范依据：三份原始手册全文、`agent-blueprint/BLUEPRINT.md` 的 Step 3 组件选型与 s01–s17 说明
 >
-> 当前边界：组件选型与 G5 产品方案已确认；下一步只生成 V0.2-B 最小 Harness 的 G6 阶段文档，不进入代码实施
+> 当前边界：G4–G5 选型原则保留；Agent 运行时、账户和素材能力按 `docs/28`、`docs/29` 的 Codex App Server 迁移执行。
 
 ## 1. G4 推荐结论
 
@@ -17,8 +17,9 @@
 - **采用 12 项**：s01、s02、s03、s04、s05、s07、s08、s10、s11、s15、s16、s17；
 - **暂缓 3 项**：s06、s09、s13；
 - **当前不采用 2 项**：s12、s14；
-- **工厂自身采用 4 类能力包**：Web 交互、Agent 运行、长任务、高风险动作；
-- **工厂自身当前不采用 5 类能力包**：RAG、多媒体生成、游戏体验、账户多租户、实时通信。
+- **工厂自身采用 5 类能力包**：Web 交互、Agent 运行、长任务、高风险动作、多媒体生产；
+- **账户能力部分采用**：只做本人 ChatGPT/OpenAI 登录，不做工厂多租户；
+- **工厂自身当前不采用 3 类能力包**：RAG、游戏体验、实时通信。
 
 这个组合足以让单个工厂 Agent 在确定性控制平面内连续行动、调用工具、恢复任务并用真实证据完成目标，同时不提前承担多 Agent 团队、跨项目记忆、定时自治和外部工具生态的复杂度。
 
@@ -45,7 +46,7 @@
 
 | 编号 | Agent Blueprint 候选项 | G4 结论 | 触发的产品事实 | 没有它会在哪里失败 | 当前落地要求 |
 | --- | --- | --- | --- | --- | --- |
-| s01 | Agent Loop | 采用 | 工厂 Agent 要连续推理和使用工具，不是一次生成文本 | 每个生产单只能得到一段回答，无法真实修改、验证和继续 | 延续 Pi Agent 驱动循环，经工厂 AgentRuntime 隔离 |
+| s01 | Agent Loop | 采用 | 工厂 Agent 要连续推理和使用工具，不是一次生成文本 | 每个生产单只能得到一段回答，无法真实修改、验证和继续 | 使用 Codex App Server Thread/Turn 循环，经工厂 AgentRuntime 隔离 |
 | s02 | Tool Use | 采用 | G3 已确认文件、Git、Shell、测试、浏览器和产物工具 | Agent 无法作用于外部世界，工厂仍是聊天产品 | 统一工具注册、schema、错误结构、副作用和结果配对 |
 | s03 | Permission | 采用 | 工厂会写文件、执行命令、访问模型并准备发布 | 路径越界、秘密泄露、破坏性命令和外部发送无法可靠阻止 | 执行前默认拒绝，落实 P0–P3、人工闸门和审计 |
 | s04 | Hooks | 采用 | 权限、审计、用量、证据和产物登记横跨全部工具 | 相同规则散落在每个工具里，容易漏记、漏拦截和不一致 | PreToolUse 可拦截；PostToolUse 统一记录观察和副作用 |
@@ -69,7 +70,7 @@
 
 | Module | 包含的蓝图项 | 对外 Interface 应隐藏什么复杂度 | 主要调用者 |
 | --- | --- | --- | --- |
-| FactoryHarness | s01、s15 | Pi Agent 事件、上下文更新、工具回传、退出原因和循环细节 | Worker / Workflow Runtime |
+| FactoryHarness | s01、s15 | Codex App Server 事件、Thread/Turn、上下文更新、工具回传和退出原因 | Worker / Workflow Runtime |
 | ToolGateway | s02、s03、s04 | 工具发现、schema 校验、权限、Hooks、超时、错误和结果登记 | FactoryHarness |
 | WorkPlan | s05 | 本轮计划项、状态和用户可见进度的维护规则 | FactoryHarness / WebUI |
 
@@ -81,7 +82,7 @@
 | --- | --- | --- | --- |
 | KnowledgeLoader | s07 | 能力包目录、版本、按需加载和来源追踪 | 目标产品知识只能进入对应项目 |
 | ContextManager | s08 | Token 预算、工具结果裁剪、普通历史摘要和恢复 | 未完成目标、工具配对和检查点必须保留 |
-| ManualAuthority | 工厂专用强制 Module | 手册定位、SHA 校验、阶段选择、稳定顺序和加载记录 | 三份手册不是普通 Skill，不参与摘要替代 |
+| ManualAuthority | 工厂专用强制 Module | 手册定位、SHA 校验、每个新产品流程快照锁定、复用、释放和加载记录 | 三份手册不是普通 Skill，不参与摘要替代；流程完成或终止后不重读，下一个新产品重新读取 |
 
 ManualAuthority 不是 Agent Blueprint 新增组件，而是三份手册最高优先规则在本项目中的专用 Module。它必须独立于普通 Skill 和 Context Compact，避免通用压缩逻辑误删权威原文。
 
@@ -177,13 +178,13 @@ PRD 没有定时生产、定时巡检或无人触发任务。第一版由产品�
 | 能力包 | G4 结论 | 触发事实 | 没有它会在哪里失败 |
 | --- | --- | --- | --- |
 | Web Interface | 采用 | 第一版是可控制、可观察、可确认的对话式 WebUI | 用户没有说需求、看结果、恢复任务和确认的入口 |
-| Agent Runtime | 采用 | Pi Agent + DeepSeek 是工厂主体 Agent 与主要模型 | 工厂只能执行固定规则，无法动态规划阶段内动作 |
+| Agent Runtime | 采用 | Codex App Server 是工厂唯一 Factory Agent 运行时 | 工厂只能执行固定规则，无法动态规划阶段内动作 |
 | Long-running Task | 采用 | 产品生产、安装、构建、测试和验收跨越短请求 | 页面刷新或 Worker 重启后任务丢失 |
 | High-risk Actions | 采用 | 文件写入、Shell、Git、外部发送和发布存在风险 | 无法落实 P0–P3 权限和重大影响确认 |
 | RAG | 不采用 | 当前知识是有限的版本化手册、PRD、代码和能力包 | 删除后不影响第一版；直接读取和搜索即可 |
-| Multimedia | 不采用 | 工厂自身当前不生成图片、音频或视频作为核心能力 | 目标产品需要时由对应产品能力包引入 |
+| Multimedia | 采用 | 工厂已确认图片、音频和 3D 素材生产工位 | 需要素材的产品无法得到真实 Artifact 和能力阻塞状态 |
 | Game Experience | 不采用 | 小游戏只是试产对象，不是工厂产品形态 | 工厂内核不应包含关卡、得分或游戏体验规则 |
-| Accounts and Tenancy | 不采用 | 第一版唯一用户是产品负责人本人 | 单用户本地版本不需要登录和租户隔离 |
+| Accounts and Tenancy | 部分采用 | 第一版仍是单用户，但使用前必须登录本人 ChatGPT/OpenAI 账户 | 未登录无法执行 Codex；不因此引入多租户业务模型 |
 | Realtime Communication | 不采用 | SSE 只用于单向观察，不存在语音、协作或双向高频通信 | 普通 HTTP + SSE 足够当前 WebUI |
 
 ### 8.1 目标产品能力包规则
@@ -207,15 +208,15 @@ PRD 没有定时生产、定时巡检或无人触发任务。第一版由产品�
 | 进程内 | 权限策略、状态转换、目标判断、上下文预算 | 保持为内部 Module，不为测试暴露额外 Interface | 直接通过所属 Module 的外部 Interface 测试 |
 | 本地可替代 | SQLite、文件系统、Git、命令和目标产品工作区 | 只有存在真实本地与测试替身时建立内部 Seam | 临时目录、测试数据库或内存替身；不把内部 Seam 泄露给上层 |
 | 远程但自有 | 第一版本没有独立自有微服务 | 不创建假想端口 | 保持模块化单体，出现真实远程部署再设计 |
-| 真正外部 | DeepSeek、npm 软件源、未来目标产品 API | 在调用处建立受控 Seam | 生产 Adapter + 测试 Adapter / mock；错误、超时和用量统一归一化 |
+| 真正外部 | ChatGPT/OpenAI 账户、npm 软件源、素材工具和未来目标产品 API | 在调用处建立受控 Seam | App Server/Tool Adapter + 伪造运输；错误、超时和用量统一归一化 |
 
-现有 `AgentRuntime` 已经有 PiAgentRuntime 与 InMemoryAgentRuntime 两个 Adapter，因此是一个真实且应保留的 Seam。后续 Harness 通过 AgentRuntime 使用模型，不直接依赖 Pi Agent 或 DeepSeek 的具体事件格式。
+现有 `AgentRuntime` 作为产品流程与 App Server 协议之间的真实 Seam：生产使用 `CodexAppServerRuntime`，测试使用伪造 JSON-RPC 运输。Harness 不直接依赖 App Server 的具体通知格式。
 
 ## 10. 现有代码复用与缺口
 
 | 现有 Module 或代码 | G4 处理 | 已具备 | 仍缺少 |
 | --- | --- | --- | --- |
-| AgentRuntime | 保留并加深 | Pi Adapter、内存 Adapter、事件映射、DeepSeek 配置检查 | 完整工具定义、预算、取消、上下文恢复和结构化终态 |
+| AgentRuntime | 保留并替换内部实现 | App Server JSON-RPC、账户状态、Thread/Turn 映射、引导/中断和事件归一化 | 完整动态工具桥、恢复和真实长 Turn 验收 |
 | ProductionController | 保留为确定性控制平面 | 空结果不能确认、阶段确认后创建下一批次 | G1–G9 完整闸门、暂停继续终止、版本失效和完成目标 |
 | ProductionRunStore | 保留并迁移扩展 | 批次、事件序号、领取和状态持久化 | 任务图、租约续期、检查点、副作用和 Workflow journal |
 | Worker | 用 FactoryHarness 替换内部一次性执行，不平行叠加第二套循环 | 领取批次、调用 AgentRuntime、保存事件 | 连续工具循环、后台任务、恢复、Goal Gate 和统一退出 |
@@ -241,7 +242,7 @@ PRD 没有定时生产、定时巡检或无人触发任务。第一版由产品�
 
 本选型：
 
-- 不新增模型供应商，继续使用已确认的 DeepSeek；
+- 不继续使用旧模型 Provider，Factory Agent 只通过 Codex App Server 运行；
 - 不新增付费平台、云资源、MCP server 或外部数据上传；
 - 不引入 PostgreSQL、Redis、RAG、对象存储、多用户或多 Agent 团队；
 - 不升级现有核心依赖版本；
@@ -263,7 +264,7 @@ PRD 没有定时生产、定时巡检或无人触发任务。第一版由产品�
 | 采用 s15、s16、s17 | 单一循环、固定阶段、证据完成 | Integrated Harness、Workflow Runtime、Goal Loop |
 | 暂缓 s06、s09、s13 | 单 Agent、项目内档案、单 Worker | Subagent、Memory、Agent Teams 的触发条件尚未出现 |
 | 不采用 s12、s14 | 无定时自治、无外部工具生态 | Cron、MCP 的触发条件尚未出现 |
-| 采用四类工厂能力包 | WebUI、主体 Agent、长任务、高风险工具 | PRD 7.4 的目标产品能力包选择要求 |
+| 采用五类工厂能力包并部分采用账户 | WebUI、Codex Agent、长任务、高风险工具、多媒体、本人 OpenAI 登录 | 已确认 PRD 与 Codex App Server 迁移要求 |
 | 不把游戏能力写进内核 | 小游戏只是试产对象 | 最少选择原则 |
 
 ## 14. 需要产品负责人决定的问题
@@ -280,8 +281,9 @@ PRD 没有定时生产、定时巡检或无人触发任务。第一版由产品�
 - [x] Agent Loop、工具、权限、Hooks、计划、按需知识、上下文、持久任务、后台任务、集成 Harness、固定 Workflow 和 Goal Gate 都是核心闭环必需；
 - [x] Subagent、Memory 和 Agent Teams 暂缓，不影响单 Agent 第一台试产；
 - [x] Cron 和 MCP 当前不采用，不影响用户主动生产和本地工具执行；
-- [x] 工厂自身只采用 Web、Agent、长任务和高风险动作能力包；小游戏等目标产品能力另行选择；
-- [x] 继续复用 Pi Agent + DeepSeek、AgentRuntime、SQLite、Worker 和现有 WebUI，不新增外部平台或费用；
+- [x] 工厂采用 Web、Codex Agent、长任务、高风险动作和多媒体能力，并仅引入本人 OpenAI 登录；目标产品能力另行选择；
+- [x] 保留 AgentRuntime 边界、SQLite、Worker 和 WebUI，内部执行引擎改为 Codex App Server；
+- [x] 图片、音频、3D 素材工位只调用已配置真实工具，未配置时阻塞；
 - [x] 本文只是组件选型，当前缺口仍需在 G5、G6 后开发和验证。
 
-本清单已由产品负责人确认。G4–G5 已正式通过，当前进入 V0.2-B“最小可执行 Harness”的 G6 阶段文档确认；G6 通过前不进入代码实施。
+本清单的 G4–G5 选型原则已由产品负责人确认。其中旧 Agent/模型实现结论已由 2026-09-02 Codex App Server 迁移要求取代。

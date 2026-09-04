@@ -5,8 +5,12 @@ import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   buildFactoryHarnessSystemPrompt,
-  createProductionPiHarnessDriver,
-  PiAgentRuntime
+  CodexAccountService,
+  CodexAppServerClient,
+  CodexAppServerRuntime,
+  createDeepSeekHarnessDriver,
+  createProductionCodexHarnessDriver,
+  DeepSeekRuntime
 } from "@factory/agent-runtime";
 import {
   BackgroundRunner,
@@ -16,13 +20,16 @@ import {
   createCoreToolDefinitions,
   FactoryHarness,
   LocalWorkspace,
-  ManualAuthority,
+  ProductManualAuthorityRegistry,
   ToolGateway
 } from "@factory/harness";
 import {
   defaultDatabasePath,
   findFactoryRoot,
+  SqliteCodexRuntimeStore,
   SqliteHarnessRecordStore,
+  SqliteProductManualIssuanceStore,
+  SqliteProductManualSnapshotStore,
   SqliteProductionRunStore,
   SqliteProjectRegistry
 } from "@factory/records";
@@ -42,6 +49,21 @@ import {
 import { formatProductQualityReport, runProductQuality } from "./product-quality";
 import { getProductOutputArtifact, isHarnessValidationObjective } from "./product-output";
 import { buildReleaseHandoff, evaluateReleaseReadiness } from "./release-flow";
+import {
+  markCodexAccountUnavailable,
+  processNextCodexAccountCommand,
+  refreshCodexAccountSnapshot,
+  shutdownCodexRuntime,
+  startCodexAccountHeartbeat,
+  refreshCodexRuntimeSnapshots
+} from "./codex-control";
+import {
+  mediaCapabilityContext,
+  unavailableMediaStations,
+  verifyRequiredMediaArtifacts,
+  type VerifiedMediaArtifact
+} from "./media-production";
+import { shouldCloseProductManualSnapshot } from "./manual-lifecycle";
 
 const fallbackProjectRoot = findFactoryRoot(process.cwd());
 const projectRoot = process.env.FACTORY_PROJECT_ROOT?.trim() || fallbackProjectRoot;
@@ -52,20 +74,102 @@ const workerId = `local-worker-${randomUUID().slice(0, 8)}`;
 const projects = new SqliteProjectRegistry();
 const runs = new SqliteProductionRunStore();
 const harnessRecords = new SqliteHarnessRecordStore();
-const runtime = new PiAgentRuntime();
+const codexRecords = new SqliteCodexRuntimeStore();
+const manualIssuanceStore = new SqliteProductManualIssuanceStore();
+const manualSnapshotStore = new SqliteProductManualSnapshotStore();
+const codexClient = new CodexAppServerClient();
+const codexAccount = new CodexAccountService(codexClient);
+const runtime = new CodexAppServerRuntime({
+  client: codexClient,
+  bindings: codexRecords,
+  defaultCwd: projectRoot
+});
+const deepseekRuntime = new DeepSeekRuntime();
 const pollIntervalMs = Number(process.env.WORKER_POLL_MS ?? 1200);
 const runOnce = process.env.WORKER_ONCE === "1";
+const shutdownGraceMs = Number(process.env.WORKER_SHUTDOWN_GRACE_MS ?? 5_000);
 let stopping = false;
+let activeRunId: string | null = null;
+let activeRunFinished: Promise<void> = Promise.resolve();
+let finishActiveRun: (() => void) | null = null;
+let codexClosePromise: Promise<void> | null = null;
+let shutdownPromise: Promise<void> | null = null;
 
 const dataRoot = dirname(defaultDatabasePath());
-const authority = new ManualAuthority(projectRoot);
-let manualContext: string | null = null;
-let manualError: string | null = null;
-try {
-  manualContext = authority.load("v0.2-b").context;
-} catch (error) {
-  manualError = error instanceof Error ? error.message : "三份原始手册校验失败";
-}
+// Each product flow owns one immutable, uncompressed manual snapshot. Stages,
+// revisions and retries reuse it; a completed flow is released and closed.
+const manualAuthorities = new ProductManualAuthorityRegistry(
+  projectRoot,
+  manualSnapshotStore,
+  manualIssuanceStore
+);
+const manualFailures = new Map<string, string>();
+
+const releaseTerminalManualSnapshots = () => {
+  for (const productFlowId of manualAuthorities.activeFlowIds()) {
+    const project = projects.get(productFlowId);
+    const histories = runs.listForProject(productFlowId).map((run) => ({
+      events: runs.events(run.id)
+    }));
+    if (shouldCloseProductManualSnapshot(project, histories)) {
+      manualAuthorities.release(productFlowId);
+    }
+  }
+};
+
+const logCodexFailure = (event: string, error: unknown, detail: Record<string, unknown> = {}) => {
+  console.error(JSON.stringify({
+    level: "error",
+    event,
+    ...detail,
+    errorType: error instanceof Error ? error.name : "unknown"
+  }));
+};
+
+let snapshotRefreshTail = Promise.resolve();
+const scheduleAccountSnapshotRefresh = (refreshToken = false) => {
+  snapshotRefreshTail = snapshotRefreshTail
+    .then(() => refreshCodexAccountSnapshot(codexAccount, codexRecords, refreshToken))
+    .then(() => undefined)
+    .catch((error: unknown) => {
+      logCodexFailure("codex_runtime.account_snapshot_refresh_failed", error);
+    });
+  return snapshotRefreshTail;
+};
+
+const scheduleRuntimeSnapshotRefresh = (refreshToken = false) => {
+  snapshotRefreshTail = snapshotRefreshTail
+    .then(() => refreshCodexRuntimeSnapshots({
+      account: codexAccount,
+      store: codexRecords,
+      cwd: projectRoot,
+      refreshToken
+    }))
+    .then(() => undefined)
+    .catch((error: unknown) => {
+      logCodexFailure("codex_runtime.snapshot_refresh_failed", error);
+    });
+  return snapshotRefreshTail;
+};
+
+const closeCodexClient = () => {
+  codexClosePromise ??= codexClient.close();
+  return codexClosePromise;
+};
+
+const markRunActive = (runId: string) => {
+  activeRunId = runId;
+  activeRunFinished = new Promise<void>((resolve) => {
+    finishActiveRun = resolve;
+  });
+};
+
+const markRunFinished = (runId: string) => {
+  if (activeRunId !== runId) return;
+  activeRunId = null;
+  finishActiveRun?.();
+  finishActiveRun = null;
+};
 
 const stationInstructions: Record<
   Extract<
@@ -255,7 +359,72 @@ const prepareHarnessWorkspace = (productionRunId: string) => {
   return workspaceRoot;
 };
 
-async function executeHarnessValidation({ run, events }: RuntimeTurnContext): Promise<TurnOutcome> {
+type ControlDispatchResult = {
+  accepted: boolean;
+  message: string;
+  retryWhenInactive?: boolean;
+};
+
+const startRunControlBridge = (
+  run: ProductionRun,
+  events: RuntimeTurnContext["events"],
+  dispatch: (
+    type: "harness.command.steer" | "harness.command.abort",
+    value: string
+  ) => Promise<ControlDispatchResult>
+) => {
+  let cursor = 0;
+  let closed = false;
+  let activeDrain: Promise<void> | null = null;
+
+  const drain = async () => {
+    for (const command of runs.events(run.id, cursor)) {
+      if (command.type !== "harness.command.steer" && command.type !== "harness.command.abort") {
+        cursor = Math.max(cursor, command.sequence);
+        continue;
+      }
+      const value = command.type === "harness.command.abort"
+        ? String(command.payload.reason ?? "用户停止")
+        : String(command.payload.message ?? "");
+      let receipt: ControlDispatchResult;
+      try {
+        receipt = await dispatch(command.type, value);
+      } catch {
+        receipt = { accepted: false, message: "Codex 控制指令发送失败" };
+      }
+      if (!receipt.accepted && receipt.retryWhenInactive) return;
+      cursor = Math.max(cursor, command.sequence);
+      events.legacy("harness.command.receipt", {
+        commandSequence: command.sequence,
+        commandType: command.type,
+        accepted: receipt.accepted,
+        message: receipt.message
+      });
+    }
+  };
+
+  const tick = () => {
+    if (closed || activeDrain) return;
+    activeDrain = drain().finally(() => {
+      activeDrain = null;
+    });
+  };
+  const timer = setInterval(tick, 400);
+  tick();
+
+  return async () => {
+    closed = true;
+    clearInterval(timer);
+    await activeDrain;
+  };
+};
+
+async function executeHarnessValidation({
+  run,
+  project,
+  events
+}: RuntimeTurnContext): Promise<TurnOutcome> {
+  const manuals = manualAuthorities.acquire(project.id);
   const existingTask = harnessRecords.getTaskForRun(run.id);
   const task = existingTask ?? harnessRecords.createTask(
     run.id,
@@ -263,40 +432,46 @@ async function executeHarnessValidation({ run, events }: RuntimeTurnContext): Pr
     2
   );
   const verifier = new CompletionVerifier(harnessRecords);
+  const g6HarnessApproved = runs.listForProject(project.id).some(
+    (candidate) =>
+      candidate.id !== run.id &&
+      isHarnessValidationObjective(candidate.objective) &&
+      candidate.status === "succeeded"
+  );
+  const p1Approved = isHarnessValidationObjective(run.objective) || g6HarnessApproved;
+  const completionCriteria = ["CG-06"];
   const factoryHarness = new FactoryHarness({
     records: harnessRecords,
     verifier,
     prepare: async (factoryTask, harnessRun) => {
-      const loadedManuals = authority.load("v0.2-b");
       const workspaceRoot = prepareHarnessWorkspace(run.id);
       const workspace = new LocalWorkspace(workspaceRoot);
       const commands = new ControlledCommandRunner(workspaceRoot);
-      const gateway = new ToolGateway({ records: harnessRecords, workspaceRoot, p1Approved: true });
+      const gateway = new ToolGateway({ records: harnessRecords, workspaceRoot, p1Approved });
       const background = new BackgroundRunner(harnessRecords, commands);
       const definitions = createCoreToolDefinitions({
-        authority,
+        authority: manuals.authority,
         workspace,
         commands,
         records: harnessRecords,
         harnessRunId: harnessRun.id,
         taskId: factoryTask.id,
-        reportRoot: join(dataRoot, "reports", harnessRun.id)
+        reportRoot: join(dataRoot, "reports", harnessRun.id),
+        completionCriteria
       });
       definitions.push(createBackgroundToolDefinition(background, factoryTask.id));
       definitions.forEach((definition) => gateway.register(definition));
-      const driver = await createProductionPiHarnessDriver({
-        apiKey: process.env.DEEPSEEK_API_KEY?.trim() ?? "",
-        modelName: process.env.DEEPSEEK_MODEL?.trim() || "deepseek-v4-flash",
-        dataRoot,
+      const driver = createDeepSeekHarnessDriver({
+        runtime: deepseekRuntime,
         workspaceRoot,
         runId: harnessRun.id,
-        systemPrompt: buildFactoryHarnessSystemPrompt(loadedManuals.context),
+        systemPrompt: buildFactoryHarnessSystemPrompt(manuals.snapshot.context),
         gateway,
-        toolNames: definitions.map((definition) => definition.name)
+        definitions
       });
       return {
         driver,
-        requiredCriteria: ["CG-06"],
+        requiredCriteria: completionCriteria,
         execute: (call: { toolCallId: string; toolName: string; args: Record<string, unknown> }) =>
           gateway.execute({ harnessRunId: harnessRun.id, ...call }),
         prompt: [
@@ -311,30 +486,24 @@ async function executeHarnessValidation({ run, events }: RuntimeTurnContext): Pr
       };
     }
   });
-  let lastControlSequence = 0;
-  let checkingControls = false;
-  const controlTimer = setInterval(() => {
-    if (checkingControls) return;
-    checkingControls = true;
-    void (async () => {
-      const harnessRun = harnessRecords.getHarnessRunForProductionRun(run.id);
-      if (!harnessRun) return;
-      const commands = runs.events(run.id, lastControlSequence)
-        .filter((event) => event.type === "harness.command.steer" || event.type === "harness.command.abort");
-      for (const command of commands) {
-        lastControlSequence = Math.max(lastControlSequence, command.sequence);
-        const receipt = command.type === "harness.command.abort"
-          ? await factoryHarness.abort(harnessRun.id, String(command.payload.reason ?? "用户停止"))
-          : await factoryHarness.steer(harnessRun.id, String(command.payload.message ?? ""));
-        events.legacy("harness.command.receipt", {
-          commandSequence: command.sequence,
-          commandType: command.type,
-          ...receipt
-        });
-      }
-    })().finally(() => { checkingControls = false; });
-  }, 500);
-  const snapshot = await factoryHarness.run(task.id).finally(() => clearInterval(controlTimer));
+  const stopControls = startRunControlBridge(run, events, async (type, value) => {
+    const harnessRun = harnessRecords.getHarnessRunForProductionRun(run.id);
+    if (!harnessRun) {
+      return { accepted: false, message: "Harness 尚未开始", retryWhenInactive: true };
+    }
+    const receipt = type === "harness.command.abort"
+      ? await factoryHarness.abort(harnessRun.id, value)
+      : await factoryHarness.steer(harnessRun.id, value);
+    return {
+      accepted: receipt.accepted,
+      message: receipt.message,
+      retryWhenInactive: !receipt.accepted
+    };
+  });
+  const shouldResume = harnessRecords.getHarnessRunForProductionRun(run.id)?.status === "waiting_user";
+  const snapshot = shouldResume
+    ? await factoryHarness.resume(task.id).finally(stopControls)
+    : await factoryHarness.run(task.id).finally(stopControls);
   events.legacy("harness.snapshot", {
     harnessRunId: snapshot.id,
     status: snapshot.status,
@@ -364,6 +533,19 @@ async function executeHarnessValidation({ run, events }: RuntimeTurnContext): Pr
       kind: "awaiting_approval",
       approvalId: `approval:${run.id}:g6_harness_acceptance`,
       gate: "g6_harness_acceptance"
+    };
+  } else if (snapshot.status === "waiting_user") {
+    const pendingCount = harnessRecords.listPendingApprovals(snapshot.id).length;
+    events.legacy("text.delta", {
+      delta: pendingCount > 0
+        ? `当前生产有 ${pendingCount} 个重大动作等待你批准，请查看待审批项并作出决定。`
+        : "当前生产有待审批的重大动作，请查看待审批项并作出决定。"
+    });
+    events.legacy("agent.completed", { deterministic: true, awaitingActionApproval: true });
+    return {
+      kind: "awaiting_approval",
+      approvalId: `approval:${run.id}:harness_action_approval`,
+      gate: "harness_action_approval"
     };
   } else if (snapshot.status === "blocked") {
     return { kind: "blocked", message: snapshot.stopReason ?? "Harness 被阻塞" };
@@ -405,7 +587,11 @@ function prepareRealAcceptance({ run, project, events }: RuntimeTurnContext): Tu
   };
 }
 
-const buildAssignment = (run: ProductionRun, project: ProductProject) => {
+const buildAssignment = (
+  run: ProductionRun,
+  project: ProductProject,
+  manualContext: string
+) => {
   if (!(run.stage in stationInstructions)) return null;
   const instruction = stationInstructions[run.stage as keyof typeof stationInstructions];
   return {
@@ -416,11 +602,18 @@ const buildAssignment = (run: ProductionRun, project: ProductProject) => {
       `产品名称：${project.name}`,
       `PRD：\n${project.prd}`,
       `上一工位结果：\n${previousResult(run)}`,
-      `三份原始手册全文：\n${manualContext ?? "缺失"}`,
+      `三份原始手册全文：\n${manualContext}`,
+      `素材生产能力：\n${mediaCapabilityContext(
+        project,
+        codexRecords.getCapabilitySnapshot()?.capabilities ?? []
+      )}`,
+      "素材规则：预检的“可尝试”不等于生产成功。需要图片时必须真实调用 imagegen，并让 App Server 返回带有可验证 savedPath 的 imageGeneration 完成事件；图片、音频、3D 均不得用文字声明、占位文件或环境变量伪造成功。",
       instruction.outputRequest
     ].join("\n\n"),
-    model: process.env.DEEPSEEK_MODEL?.trim() || "deepseek-v4-flash",
-    thinkingLevel: "low" as const
+    model: process.env.CODEX_MODEL?.trim() || "account-default",
+    thinkingLevel: "low" as const,
+    scopeId: project.id,
+    cwd: project.workspacePath?.trim() || projectRoot
   };
 };
 
@@ -429,25 +622,73 @@ async function executeAgentStation({
   project,
   events
 }: RuntimeTurnContext): Promise<TurnOutcome> {
-  const assignment = buildAssignment(run, project);
+  const manuals = manualAuthorities.acquire(project.id);
+  const assignment = buildAssignment(run, project, manuals.snapshot.context);
   if (!assignment) return { kind: "blocked", message: "当前工位尚未接入受控执行工具" };
-
-  let completed = false;
-  let failedMessage: string | null = null;
-  let missingConfiguration = false;
-  const executionEvents: AgentRuntimeEvent[] = [];
-
-  for await (const event of runtime.run(assignment)) {
-    executionEvents.push(event);
-    events.legacy(event.type, event.payload);
-    if (event.type === "agent.completed") completed = true;
-    if (event.type === "agent.failed") {
-      failedMessage = String(event.payload.message ?? "Agent 执行失败");
-      missingConfiguration = event.payload.code === "deepseek_key_missing";
+  if (run.stage === "implementation") {
+    const unavailable = unavailableMediaStations(
+      project,
+      codexRecords.getCapabilitySnapshot()?.capabilities ?? []
+    );
+    if (unavailable.length > 0) {
+      return {
+        kind: "blocked",
+        message: `${unavailable.map((station) => station.title).join("、")}尚未配置真实 Codex 素材工具`
+      };
     }
   }
 
+  let completed = false;
+  let failedMessage: string | null = null;
+  let authenticationRequired = false;
+  let interrupted = false;
+  const executionEvents: AgentRuntimeEvent[] = [];
+
+  const stopControls = startRunControlBridge(run, events, async (type, value) => {
+    const receipt = type === "harness.command.abort"
+      ? await deepseekRuntime.abort(run.id, value)
+      : await deepseekRuntime.steer(run.id, value);
+    return {
+      accepted: receipt.accepted,
+      message: receipt.reason ?? (receipt.accepted ? "指令已送达 DeepSeek" : "DeepSeek 调用尚未开始"),
+      retryWhenInactive: !receipt.accepted
+    };
+  });
+  try {
+    for await (const event of deepseekRuntime.run(assignment)) {
+      executionEvents.push(event);
+      events.legacy(event.type, event.payload);
+      if (event.type === "agent.completed") completed = true;
+      if (event.type === "agent.interrupted") interrupted = true;
+      if (event.type === "agent.failed") {
+        failedMessage = String(event.payload.message ?? "Agent 执行失败");
+        authenticationRequired = event.payload.code === "openai_auth_required";
+      }
+    }
+  } finally {
+    await stopControls();
+  }
+
+  let verifiedMediaArtifacts: VerifiedMediaArtifact[] = [];
+  if (completed && run.stage === "implementation") {
+    const verification = verifyRequiredMediaArtifacts(project, executionEvents);
+    if (!verification.ok) return { kind: "failed", message: verification.message };
+    verifiedMediaArtifacts = verification.artifacts;
+  }
+
   if (completed && hasConfirmableAgentResult(executionEvents)) {
+    for (const artifact of verifiedMediaArtifacts) {
+      events.legacy("artifact.available", {
+        kind: "image-asset",
+        mediaKind: artifact.kind,
+        itemId: artifact.itemId,
+        savedPath: artifact.savedPath,
+        byteSize: artifact.byteSize,
+        sha256: artifact.sha256,
+        verified: true,
+        verification: "app-server-imageGeneration+filesystem-signature"
+      });
+    }
     if (run.stage === "stage-design" || run.stage === "implementation") {
       const output = executionEvents
         .filter((event) => event.type === "text.delta")
@@ -475,8 +716,9 @@ async function executeAgentStation({
     };
   }
   if (completed) return { kind: "failed", message: "AI 未生成可确认结果，请重新分析" };
-  if (missingConfiguration) {
-    return { kind: "blocked", message: failedMessage ?? "尚未配置 DeepSeek" };
+  if (interrupted) return { kind: "interrupted", message: "Codex Turn 已停止" };
+  if (authenticationRequired) {
+    return { kind: "blocked", message: failedMessage ?? "请先登录自己的 OpenAI 账户" };
   }
   return { kind: "failed", message: failedMessage ?? "Agent 未正常结束" };
 }
@@ -484,10 +726,10 @@ async function executeAgentStation({
 const runtimeHandlers: RuntimeTurnHandler[] = [
   {
     id: "manual-authority",
-    supports: () => manualContext === null,
-    execute: async () => ({
+    supports: (run) => manualFailures.has(run.id),
+    execute: async ({ run }) => ({
       kind: "blocked",
-      message: manualError ?? "三份原始手册缺失，已停止生产"
+      message: manualFailures.get(run.id) ?? "三份原始手册缺失，已停止生产"
     })
   },
   {
@@ -516,8 +758,8 @@ const runtimeHandlers: RuntimeTurnHandler[] = [
     execute: async (context) => executeReleaseHandoff(context)
   },
   {
-    id: "pi-agent-station",
-    supports: (run, project) => buildAssignment(run, project) !== null,
+    id: "codex-app-server-station",
+    supports: (run) => run.stage in stationInstructions,
     execute: executeAgentStation
   }
 ];
@@ -528,25 +770,147 @@ const wait = (milliseconds: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
 
 async function executeNext() {
+  releaseTerminalManualSnapshots();
   const run = runs.claimNext(workerId);
   if (!run) return false;
-  const project = projects.get(run.projectId);
-  if (!project) {
-    runs.transition(run.id, "failed", "产品项目不存在");
+  markRunActive(run.id);
+  try {
+    const project = projects.get(run.projectId);
+    if (!project) {
+      runs.transition(run.id, "failed", "产品项目不存在");
+      return true;
+    }
+    if (shouldCloseProductManualSnapshot(project, runs.listForProject(project.id).map((historyRun) => ({
+      events: runs.events(historyRun.id)
+    })))) {
+      manualAuthorities.release(project.id);
+      manualFailures.set(run.id, "产品流程已经完成，禁止重新读取三份原始手册");
+    } else {
+      try {
+        manualAuthorities.acquire(project.id);
+      } catch (error) {
+        manualFailures.set(
+          run.id,
+          error instanceof Error ? error.message : "三份原始手册校验失败"
+        );
+      }
+    }
+    await runtimeCore.execute(run, project);
     return true;
+  } finally {
+    manualFailures.delete(run.id);
+    releaseTerminalManualSnapshots();
+    markRunFinished(run.id);
   }
-  await runtimeCore.execute(run, project);
-  return true;
+}
+
+const processNextAccountCommand = () => processNextCodexAccountCommand({
+  workerId,
+  account: codexAccount,
+  store: codexRecords,
+  cwd: projectRoot,
+  onError: (command, error) => {
+    logCodexFailure("codex_runtime.account_command_failed", error, {
+      commandId: command.id,
+      commandType: command.type
+    });
+  }
+});
+
+async function runAccountCommandLoop() {
+  while (!stopping) {
+    let worked = false;
+    try {
+      worked = await processNextAccountCommand();
+    } catch (error) {
+      logCodexFailure("codex_runtime.account_queue_failed", error);
+    }
+    if (!worked) await wait(Math.min(pollIntervalMs, 500));
+  }
 }
 
 async function main() {
-  console.log(`[worker] ${workerId} started; DeepSeek configured: ${runtime.isConfigured()}`);
-  do {
-    const worked = await executeNext();
-    if (runOnce) break;
-    if (!worked) await wait(pollIntervalMs);
-  } while (!stopping);
-  console.log(`[worker] ${workerId} stopped`);
+  let accountLoop: Promise<void> | null = null;
+  const removeCodexNotificationListener = codexClient.onNotification((notification) => {
+    if (
+      notification.method === "account/login/completed" ||
+      notification.method === "account/updated"
+    ) {
+      scheduleAccountSnapshotRefresh(false);
+    } else if (notification.method === "skills/changed") {
+      scheduleRuntimeSnapshotRefresh(false);
+    }
+  });
+  const removeCodexConnectionListener = codexClient.onConnectionClosed(() => {
+    try {
+      markCodexAccountUnavailable(codexRecords);
+    } catch (error) {
+      logCodexFailure("codex_runtime.account_snapshot_fail_closed_failed", error);
+    }
+  });
+  const stopAccountHeartbeat = startCodexAccountHeartbeat(
+    () => scheduleAccountSnapshotRefresh(false),
+    15_000
+  );
+  try {
+    const recoveredRuns = runs.recoverRunningRuns(workerId);
+    const recoveredCommands = codexRecords.failRunningCommandsForRecovery(
+      "上次 Worker 异常退出，账户操作结果未知，请重试"
+    );
+    const recoveredTasks = harnessRecords.recoverExpiredTasks();
+    if (recoveredRuns.length > 0 || recoveredCommands.length > 0 || recoveredTasks.length > 0) {
+      console.warn(JSON.stringify({
+        level: "warn",
+        event: "worker.recovery.completed",
+        recoveredRuns: recoveredRuns.length,
+        recoveredAccountCommands: recoveredCommands.length,
+        recoveredHarnessTasks: recoveredTasks.length
+      }));
+    }
+    try {
+      await codexClient.start();
+      await scheduleRuntimeSnapshotRefresh(false);
+    } catch (error) {
+      markCodexAccountUnavailable(codexRecords);
+      logCodexFailure("codex_runtime.start_failed", error);
+    }
+    console.log(`[worker] ${workerId} started; Codex App Server ready: ${codexClient.isReady()}`);
+    if (stopping) return;
+    if (runOnce) {
+      const handledAccountCommand = await processNextAccountCommand();
+      if (!handledAccountCommand) await executeNext();
+      return;
+    }
+    accountLoop = runAccountCommandLoop();
+    while (!stopping) {
+      const worked = await executeNext();
+      if (!worked) await wait(pollIntervalMs);
+    }
+  } finally {
+    stopping = true;
+    stopAccountHeartbeat();
+    removeCodexNotificationListener();
+    removeCodexConnectionListener();
+    await closeCodexClient().catch((error: unknown) => {
+      logCodexFailure("codex_runtime.close_failed", error);
+    });
+    await accountLoop;
+    await snapshotRefreshTail;
+    try {
+      markCodexAccountUnavailable(codexRecords);
+    } catch (error) {
+      logCodexFailure("codex_runtime.account_snapshot_fail_closed_failed", error);
+    }
+    codexRecords.close();
+    try {
+      releaseTerminalManualSnapshots();
+    } catch (error) {
+      logCodexFailure("manual_authority.terminal_release_failed", error);
+    }
+    manualSnapshotStore.close();
+    manualIssuanceStore.close();
+    console.log(`[worker] ${workerId} stopped`);
+  }
 }
 
 let workerPromise: Promise<void> | null = null;
@@ -562,6 +926,18 @@ export function startFactoryWorker() {
 
 export function stopFactoryWorker() {
   stopping = true;
+  if (!workerPromise) return Promise.resolve();
+  shutdownPromise ??= shutdownCodexRuntime({
+    activeRunId,
+    activeRunFinished,
+    abort: (runId, reason) => runtime.abort(runId, reason),
+    close: closeCodexClient,
+    graceMs: Number.isFinite(shutdownGraceMs) ? Math.max(0, shutdownGraceMs) : 5_000,
+    onAbortError: (error) => logCodexFailure("worker.shutdown_interrupt_failed", error, {
+      runId: activeRunId
+    })
+  });
+  return shutdownPromise;
 }
 
 const executedDirectly = process.argv[1]
@@ -569,8 +945,8 @@ const executedDirectly = process.argv[1]
   : false;
 
 if (executedDirectly) {
-  process.on("SIGINT", stopFactoryWorker);
-  process.on("SIGTERM", stopFactoryWorker);
+  process.on("SIGINT", () => { void stopFactoryWorker(); });
+  process.on("SIGTERM", () => { void stopFactoryWorker(); });
   startFactoryWorker().catch((error: unknown) => {
     console.error("[worker] fatal", error);
     process.exitCode = 1;

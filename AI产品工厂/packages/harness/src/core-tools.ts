@@ -15,6 +15,7 @@ export type CoreToolsOptions = {
   harnessRunId: string;
   taskId: string;
   reportRoot: string;
+  completionCriteria: string[];
 };
 
 const jsonReport = (path: string, value: unknown) => {
@@ -112,10 +113,26 @@ export const createCoreToolDefinitions = (options: CoreToolsOptions): HarnessToo
       jsonReport(reportPath, result);
       const artifact = options.records.registerArtifact({ runId: options.harnessRunId, kind: "test-report",
         path: reportPath, mimeType: "application/json" });
+      const passed = result.exitCode === 0;
+      const evidenceIds: string[] = [];
+      if (passed) {
+        for (const criterionId of options.completionCriteria) {
+          const evidence = options.records.registerEvidence({
+            runId: options.harnessRunId,
+            criterionId,
+            kind: "auto-test-passed",
+            artifactId: artifact.id,
+            observation: { exitCode: result.exitCode, script },
+            passed: true
+          });
+          evidenceIds.push(evidence.id);
+        }
+      }
       return {
-        summary: result.exitCode === 0 ? `${script} 检查通过` : `${script} 检查未通过（exitCode ${result.exitCode}）`,
+        summary: passed ? `${script} 检查通过` : `${script} 检查未通过（exitCode ${result.exitCode}）`,
         data: result,
-        artifactIds: [artifact.id]
+        artifactIds: [artifact.id],
+        evidenceIds
       };
     }
   },

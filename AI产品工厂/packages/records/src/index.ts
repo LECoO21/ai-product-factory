@@ -30,6 +30,7 @@ export interface ProductionRunStore {
   get(id: string): ProductionRun | null;
   listForProject(projectId: string): ProductionRun[];
   claimNext(workerId: string): ProductionRun | null;
+  recoverRunningRuns(workerId: string): ProductionRun[];
   append(runId: string, type: string, payload?: Record<string, unknown>): RunEvent;
   events(runId: string, afterSequence?: number): RunEvent[];
   transition(id: string, status: ProductionRun["status"], error?: string | null): ProductionRun;
@@ -267,6 +268,33 @@ export class SqliteProjectRegistry implements ProjectRegistry {
 export { migrateFactoryDatabase, type MigrationReport } from "./migrations";
 export { SqliteHarnessRecordStore } from "./harness-records";
 export {
+  codexAccountCommandTypes,
+  SqliteCodexRuntimeStore,
+  type CodexAccountCommand,
+  type CodexAccountCommandStatus,
+  type CodexAccountCommandType,
+  type CodexAccountSnapshot,
+  type CodexCapabilitySnapshot,
+  type CodexMediaCapability,
+  type CodexThreadCleanupJob,
+  type CodexThreadCleanupStatus,
+  type CodexThreadBinding,
+  type CodexTurnBinding,
+  type SetCodexAccountSnapshotInput,
+  type SetCodexCapabilitySnapshotInput
+} from "./codex-runtime-store";
+export {
+  closeProductManualSnapshot,
+  defaultManualSnapshotDatabasePath,
+  SqliteProductManualSnapshotStore,
+  type StoredManualSnapshotState
+} from "./manual-snapshot-store";
+export {
+  markProductManualIssuanceClosed,
+  SqliteProductManualIssuanceStore,
+  type ProductManualIssuanceClaim
+} from "./manual-issuance-store";
+export {
   artifactBackupKey,
   backupFactoryData,
   createConfiguredObjectStore,
@@ -369,6 +397,50 @@ export class SqliteProductionRunStore implements ProductionRunStore {
     const run = claim();
     if (run) this.append(run.id, "run.claimed", { workerId });
     return run;
+  }
+
+  recoverRunningRuns(workerId: string): ProductionRun[] {
+    const recoveredByWorkerId = workerId.trim();
+    if (!recoveredByWorkerId) throw new Error("恢复 Worker ID 不能为空");
+    const error = "Worker 上次异常退出，本批次已安全停止，请重新分析";
+    const recover = this.database.transaction(() => {
+      const abandoned = this.database
+        .prepare(
+          "SELECT * FROM production_runs WHERE status = 'running' ORDER BY created_at ASC"
+        )
+        .all() as RunRow[];
+      const recovered: ProductionRun[] = [];
+
+      for (const row of abandoned) {
+        const updatedAt = new Date().toISOString();
+        const update = this.database
+          .prepare(
+            `UPDATE production_runs
+             SET status = 'failed', worker_id = NULL, error = ?, updated_at = ?
+             WHERE id = ? AND status = 'running'`
+          )
+          .run(error, updatedAt, row.id);
+        if (update.changes !== 1) continue;
+
+        const recovery = {
+          previousWorkerId: row.worker_id,
+          recoveredByWorkerId,
+          previousStatus: "running",
+          retryable: true
+        };
+        this.append(row.id, "run.recovered", recovery);
+        this.append(row.id, "agent.failed", {
+          code: "worker_crash_recovered",
+          message: error,
+          retryable: true
+        });
+        this.append(row.id, "run.failed", { error, retryable: true, recovered: true });
+        const run = this.get(row.id);
+        if (run) recovered.push(run);
+      }
+      return recovered;
+    });
+    return recover.immediate();
   }
 
   append(runId: string, type: string, payload: Record<string, unknown> = {}): RunEvent {

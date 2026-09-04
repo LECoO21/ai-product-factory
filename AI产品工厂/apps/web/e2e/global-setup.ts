@@ -37,9 +37,26 @@ export default function globalSetup() {
   runs.append(failedRun.id, "agent.failed", { message: "确定性测试未通过" });
   runs.transition(failedRun.id, "failed", "确定性测试未通过");
 
+  const secondStageProject = factory.createProject({
+    name: "E2E 第二阶段产品",
+    description: "验证确认后进入第二阶段",
+    prd: requirement,
+    workspacePath: null
+  });
+  const secondStageRun = runs.create(secondStageProject.id, "生成产品理解结果");
+  runs.append(secondStageRun.id, "text.delta", {
+    delta: "产品需求已经理解完成，可以确认后进入技术方案阶段，并继续沿用同一个产品流程。"
+  });
+  runs.append(secondStageRun.id, "agent.completed");
+  runs.transition(secondStageRun.id, "waiting_approval");
+
   writeFileSync(
     join(dataDir, "fixtures.json"),
-    JSON.stringify({ confirmableRunId: confirmableRun.id, failedRunId: failedRun.id }),
+    JSON.stringify({
+      confirmableRunId: confirmableRun.id,
+      failedRunId: failedRun.id,
+      secondStageRunId: secondStageRun.id
+    }),
     "utf8"
   );
 }

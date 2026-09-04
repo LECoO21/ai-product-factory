@@ -175,7 +175,10 @@ function HarnessPanel({
   const { failed: failedTest, passed: passedTest } = getHarnessTestEvidence(harness.evidence);
 
   async function control(kind: "steer" | "abort") {
-    if (kind === "abort" && !window.confirm("确定停止本次运行吗？已产生的记录会保留。")) return;
+    if (
+      kind === "abort" &&
+      !window.confirm("确定终止这个产品流程吗？已有记录会保留；如需继续，请新建产品。")
+    ) return;
     setSending(true);
     setControlMessage(null);
     try {
@@ -241,7 +244,7 @@ function HarnessPanel({
           <div>
             <input id="steer-message" value={message} onChange={(event) => setMessage(event.target.value)} placeholder="例如：先检查测试报错" />
             <button type="button" onClick={() => void control("steer")} disabled={sending || !message.trim()}>发送</button>
-            <button className="danger-button" type="button" onClick={() => void control("abort")} disabled={sending}>停止</button>
+            <button className="danger-button" type="button" onClick={() => void control("abort")} disabled={sending}>终止流程</button>
           </div>
           {controlMessage ? <p role="status">{controlMessage}</p> : null}
         </div>

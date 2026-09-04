@@ -39,7 +39,7 @@ describe("minimum Harness records", () => {
       taskId: task.id,
       sessionPath: "harness-sessions/run.jsonl",
       promptVersion: "1.0.0",
-      model: "deepseek-v4-flash"
+      model: "account-default"
     });
     store.replacePlan(harnessRun.id, [
       { id: "read", text: "读取文件", status: "in_progress" },
@@ -86,11 +86,11 @@ describe("minimum Harness records", () => {
     const secondTask = store.createTask("production-b", "second");
     const firstRun = store.createHarnessRun({
       productionRunId: "production-a", taskId: firstTask.id,
-      sessionPath: "a.jsonl", promptVersion: "1", model: "deepseek-v4-flash"
+      sessionPath: "a.jsonl", promptVersion: "1", model: "account-default"
     });
     const secondRun = store.createHarnessRun({
       productionRunId: "production-b", taskId: secondTask.id,
-      sessionPath: "b.jsonl", promptVersion: "1", model: "deepseek-v4-flash"
+      sessionPath: "b.jsonl", promptVersion: "1", model: "account-default"
     });
 
     store.replacePlan(firstRun.id, [{ id: "wp-1", text: "first", status: "pending" }]);

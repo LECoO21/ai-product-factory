@@ -4,13 +4,25 @@ import { SqliteHarnessRecordStore } from "@factory/records";
 
 export type CompletionDecision =
   | { decision: "complete"; criterionResults: Array<{ criterionId: string; passed: true }>; evidenceIds: string[]; verifiedAt: string }
-  | { decision: "continue" | "failed" | "blocked" | "waiting_user"; satisfied: string[]; missing: string[]; failed: string[]; nextAction: string };
+  | { decision: "continue" | "failed" | "blocked" | "waiting_user" | "impossible" | "budget_exhausted"; satisfied: string[]; missing: string[]; failed: string[]; nextAction: string };
 
 export class CompletionVerifier {
   constructor(private readonly records: SqliteHarnessRecordStore) {}
 
   verify(runId: string, requiredCriteria: string[]): CompletionDecision {
     const evidence = this.records.listEvidence(runId);
+    const impossibleEvidence = evidence.filter(
+      (item) => item.kind === "goal-impossible" || item.observation.goalImpossible === true
+    );
+    if (impossibleEvidence.length > 0) {
+      return {
+        decision: "impossible",
+        satisfied: [],
+        missing: [],
+        failed: [],
+        nextAction: "目标被判定为不可达成，请产品负责人调整范围或终止当前生产"
+      };
+    }
     const artifacts = new Map(this.records.listArtifacts(runId).map((artifact) => [artifact.id, artifact]));
     const satisfied: string[] = [];
     const missing: string[] = [];

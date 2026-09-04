@@ -5,7 +5,7 @@ import { SqliteProductionRunStore } from "@factory/records";
 import { hasConfirmableAgentResult } from "@factory/shared";
 import { StartRunButton } from "@/components/start-run-button";
 import { RetryRunButton } from "@/components/retry-run-button";
-import { runStatusLabels, stageLabels } from "@/lib/labels";
+import { getProjectPrimaryActionLabel, runStatusLabels, stageLabels } from "@/lib/labels";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +27,10 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
     ? (latestRun.status === "waiting_approval" || latestRun.status === "succeeded") &&
       !hasConfirmableAgentResult(latestRunEvents)
     : false;
+  const productFlowCompleted = project.status === "candidate" || project.status === "released" ||
+    recentRuns.some((run) => runStore.events(run.id).some((event) =>
+      event.type === "gate.approved" && event.payload.completed === true
+    ));
 
   return (
     <div className="page simple-page">
@@ -37,7 +41,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           <RetryRunButton runId={latestRun.id} />
         ) : latestRun ? (
           <Link href={`/runs/${latestRun.id}`} className="primary-button">
-            {latestRunNeedsApproval ? "去确认" : "继续"}
+            {getProjectPrimaryActionLabel(latestRun, latestRunNeedsApproval, productFlowCompleted)}
           </Link>
         ) : (
           <StartRunButton projectId={project.id} />

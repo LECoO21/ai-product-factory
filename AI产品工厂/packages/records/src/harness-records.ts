@@ -3,17 +3,23 @@ import { mkdirSync, readFileSync, statSync } from "node:fs";
 import { dirname } from "node:path";
 import Database from "better-sqlite3";
 import {
+  approvalRequestSchema,
   artifactSchema,
   backgroundJobSchema,
   evidenceSchema,
   factoryTaskSchema,
+  harnessCheckpointSchema,
+  harnessRoundSchema,
   harnessRunSchema,
   toolInvocationSchema,
   workPlanItemSchema,
+  type ApprovalRequest,
   type Artifact,
   type BackgroundJob,
   type Evidence,
   type FactoryTask,
+  type HarnessCheckpoint,
+  type HarnessRound,
   type HarnessRun,
   type HarnessRunStatus,
   type PermissionLevel,
@@ -27,7 +33,7 @@ import { migrateFactoryDatabase } from "./migrations";
 type TaskRow = {
   id: string; run_id: string; objective: string; status: FactoryTask["status"];
   attempt: number; max_attempts: number; worker_id: string | null; error: string | null;
-  created_at: string; updated_at: string;
+  expires_at: string | null; created_at: string; updated_at: string;
 };
 type HarnessRunRow = {
   id: string; production_run_id: string; task_id: string; session_path: string;
@@ -58,11 +64,25 @@ type BackgroundJobRow = {
   command_summary: string; exit_code: number | null; stdout_path: string | null;
   stderr_path: string | null; created_at: string; updated_at: string;
 };
+type HarnessRoundRow = {
+  id: string; harness_run_id: string; round: number; decision: string;
+  satisfied_json: string; missing_json: string; failed_json: string;
+  next_action: string; created_at: string;
+};
+type ApprovalRequestRow = {
+  id: string; harness_run_id: string; tool_call_id: string; tool_name: string;
+  args_json: string; args_fingerprint: string; status: ApprovalRequest["status"];
+  decided_at: string | null; created_at: string;
+};
+type HarnessCheckpointRow = {
+  id: string; harness_run_id: string; kind: string; status: string;
+  payload_json: string; created_at: string;
+};
 
 const toTask = (row: TaskRow) => factoryTaskSchema.parse({
   id: row.id, runId: row.run_id, objective: row.objective, status: row.status,
   attempt: row.attempt, maxAttempts: row.max_attempts, workerId: row.worker_id,
-  error: row.error, createdAt: row.created_at, updatedAt: row.updated_at
+  error: row.error, expiresAt: row.expires_at, createdAt: row.created_at, updatedAt: row.updated_at
 });
 const toHarnessRun = (row: HarnessRunRow) => harnessRunSchema.parse({
   id: row.id, productionRunId: row.production_run_id, taskId: row.task_id,
@@ -96,6 +116,21 @@ const toBackgroundJob = (row: BackgroundJobRow) => backgroundJobSchema.parse({
   commandSummary: row.command_summary, exitCode: row.exit_code, stdoutPath: row.stdout_path,
   stderrPath: row.stderr_path, createdAt: row.created_at, updatedAt: row.updated_at
 });
+const toHarnessRound = (row: HarnessRoundRow) => harnessRoundSchema.parse({
+  id: row.id, harnessRunId: row.harness_run_id, round: row.round, decision: row.decision,
+  satisfied: JSON.parse(row.satisfied_json), missing: JSON.parse(row.missing_json),
+  failed: JSON.parse(row.failed_json), nextAction: row.next_action, createdAt: row.created_at
+});
+const toApprovalRequest = (row: ApprovalRequestRow) => approvalRequestSchema.parse({
+  id: row.id, harnessRunId: row.harness_run_id, toolCallId: row.tool_call_id,
+  toolName: row.tool_name, args: JSON.parse(row.args_json),
+  argsFingerprint: row.args_fingerprint, status: row.status,
+  decidedAt: row.decided_at, createdAt: row.created_at
+});
+const toHarnessCheckpoint = (row: HarnessCheckpointRow) => harnessCheckpointSchema.parse({
+  id: row.id, harnessRunId: row.harness_run_id, kind: row.kind, status: row.status,
+  payload: JSON.parse(row.payload_json), createdAt: row.created_at
+});
 
 export class SqliteHarnessRecordStore {
   private readonly database: Database.Database;
@@ -111,10 +146,10 @@ export class SqliteHarnessRecordStore {
   createTask(runId: string, objective: string, maxAttempts = 2): FactoryTask {
     const now = new Date().toISOString();
     const task = factoryTaskSchema.parse({ id: randomUUID(), runId, objective, status: "pending",
-      attempt: 1, maxAttempts, workerId: null, error: null, createdAt: now, updatedAt: now });
+      attempt: 1, maxAttempts, workerId: null, error: null, expiresAt: null, createdAt: now, updatedAt: now });
     this.database.prepare(`INSERT INTO factory_tasks
-      (id, run_id, objective, status, attempt, max_attempts, worker_id, error, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)`)
+      (id, run_id, objective, status, attempt, max_attempts, worker_id, error, expires_at, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?)`)
       .run(task.id, task.runId, task.objective, task.status, task.attempt, task.maxAttempts, now, now);
     return task;
   }
@@ -139,19 +174,43 @@ export class SqliteHarnessRecordStore {
     return this.getTask(id)!;
   }
 
-  claimTask(workerId: string): FactoryTask | null {
+  claimTask(workerId: string, leaseMs = 5 * 60_000): FactoryTask | null {
     return this.database.transaction(() => {
       const row = this.database.prepare(
         "SELECT * FROM factory_tasks WHERE status = 'pending' ORDER BY created_at LIMIT 1"
       ).get() as TaskRow | undefined;
       if (!row) return null;
       const now = new Date().toISOString();
+      const expiresAt = new Date(Date.now() + leaseMs).toISOString();
       const result = this.database.prepare(
-        "UPDATE factory_tasks SET status = 'in_progress', worker_id = ?, updated_at = ? WHERE id = ? AND status = 'pending'"
-      ).run(workerId, now, row.id);
+        "UPDATE factory_tasks SET status = 'in_progress', worker_id = ?, expires_at = ?, updated_at = ? WHERE id = ? AND status = 'pending'"
+      ).run(workerId, expiresAt, now, row.id);
       if (result.changes !== 1) return null;
       return toTask(this.database.prepare("SELECT * FROM factory_tasks WHERE id = ?").get(row.id) as TaskRow);
     })();
+  }
+
+  renewTaskLease(id: string, leaseMs = 5 * 60_000): FactoryTask {
+    const expiresAt = new Date(Date.now() + leaseMs).toISOString();
+    const result = this.database.prepare(
+      "UPDATE factory_tasks SET expires_at = ?, updated_at = ? WHERE id = ?"
+    ).run(expiresAt, new Date().toISOString(), id);
+    if (result.changes !== 1) throw new Error(`Task 不存在：${id}`);
+    return this.getTask(id)!;
+  }
+
+  recoverExpiredTasks(now = new Date().toISOString()): FactoryTask[] {
+    const expired = this.database.prepare(
+      "SELECT * FROM factory_tasks WHERE status = 'in_progress' AND expires_at IS NOT NULL AND expires_at < ? ORDER BY created_at"
+    ).all(now) as TaskRow[];
+    const recovered: FactoryTask[] = [];
+    for (const row of expired) {
+      this.database.prepare(
+        "UPDATE factory_tasks SET status = 'pending', worker_id = NULL, expires_at = NULL, updated_at = ? WHERE id = ? AND status = 'in_progress'"
+      ).run(new Date().toISOString(), row.id);
+      recovered.push(this.getTask(row.id)!);
+    }
+    return recovered;
   }
 
   createHarnessRun(input: Omit<HarnessRun, "id" | "status" | "stopReason" | "toolCalls" | "startedAt" | "completedAt" | "createdAt" | "updatedAt">): HarnessRun {
@@ -320,5 +379,158 @@ export class SqliteHarnessRecordStore {
     return this.database.prepare(
       "UPDATE background_jobs SET status = 'interrupted', updated_at = ? WHERE status IN ('queued', 'running')"
     ).run(new Date().toISOString()).changes;
+  }
+
+  recordHarnessRound(input: {
+    harnessRunId: string;
+    round: number;
+    decision: string;
+    satisfied: string[];
+    missing: string[];
+    failed: string[];
+    nextAction: string;
+  }): HarnessRound {
+    const now = new Date().toISOString();
+    const harnessRound = harnessRoundSchema.parse({
+      id: randomUUID(),
+      harnessRunId: input.harnessRunId,
+      round: input.round,
+      decision: input.decision,
+      satisfied: input.satisfied,
+      missing: input.missing,
+      failed: input.failed,
+      nextAction: input.nextAction,
+      createdAt: now
+    });
+    this.database.prepare(`INSERT INTO harness_rounds
+      (id, harness_run_id, round, decision, satisfied_json, missing_json, failed_json, next_action, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(
+        harnessRound.id,
+        harnessRound.harnessRunId,
+        harnessRound.round,
+        harnessRound.decision,
+        JSON.stringify(harnessRound.satisfied),
+        JSON.stringify(harnessRound.missing),
+        JSON.stringify(harnessRound.failed),
+        harnessRound.nextAction,
+        harnessRound.createdAt
+      );
+    return harnessRound;
+  }
+
+  listHarnessRounds(harnessRunId: string): HarnessRound[] {
+    return (this.database.prepare(
+      "SELECT * FROM harness_rounds WHERE harness_run_id = ? ORDER BY round"
+    ).all(harnessRunId) as HarnessRoundRow[]).map(toHarnessRound);
+  }
+
+  createApprovalRequest(input: {
+    harnessRunId: string;
+    toolCallId: string;
+    toolName: string;
+    args: Record<string, unknown>;
+    argsFingerprint: string;
+  }): ApprovalRequest {
+    const now = new Date().toISOString();
+    const request = approvalRequestSchema.parse({
+      id: randomUUID(),
+      harnessRunId: input.harnessRunId,
+      toolCallId: input.toolCallId,
+      toolName: input.toolName,
+      args: input.args,
+      argsFingerprint: input.argsFingerprint,
+      status: "pending",
+      decidedAt: null,
+      createdAt: now
+    });
+    this.database.prepare(`INSERT INTO approval_requests
+      (id, harness_run_id, tool_call_id, tool_name, args_json, args_fingerprint, status, decided_at, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, 'pending', NULL, ?)`)
+      .run(
+        request.id,
+        request.harnessRunId,
+        request.toolCallId,
+        request.toolName,
+        JSON.stringify(request.args),
+        request.argsFingerprint,
+        request.createdAt
+      );
+    return request;
+  }
+
+  getApprovalDecision(
+    harnessRunId: string,
+    toolName: string,
+    argsFingerprint: string
+  ): "approved" | "denied" | null {
+    const row = this.database.prepare(
+      `SELECT status FROM approval_requests
+       WHERE harness_run_id = ? AND tool_name = ? AND args_fingerprint = ?
+         AND status IN ('approved', 'denied')
+       ORDER BY created_at DESC LIMIT 1`
+    ).get(harnessRunId, toolName, argsFingerprint) as { status: string } | undefined;
+    return row ? (row.status as "approved" | "denied") : null;
+  }
+
+  listPendingApprovals(harnessRunId: string): ApprovalRequest[] {
+    return (this.database.prepare(
+      "SELECT * FROM approval_requests WHERE harness_run_id = ? AND status = 'pending' ORDER BY created_at"
+    ).all(harnessRunId) as ApprovalRequestRow[]).map(toApprovalRequest);
+  }
+
+  decideApprovalRequest(id: string, decision: "approved" | "denied"): ApprovalRequest {
+    const now = new Date().toISOString();
+    const result = this.database.prepare(
+      "UPDATE approval_requests SET status = ?, decided_at = ? WHERE id = ? AND status = 'pending'"
+    ).run(decision, now, id);
+    if (result.changes !== 1) throw new Error(`审批请求不存在或已处理：${id}`);
+    return this.getApprovalRequest(id)!;
+  }
+
+  getApprovalRequest(id: string): ApprovalRequest | null {
+    const row = this.database.prepare("SELECT * FROM approval_requests WHERE id = ?").get(id) as ApprovalRequestRow | undefined;
+    return row ? toApprovalRequest(row) : null;
+  }
+
+  listApprovals(harnessRunId: string): ApprovalRequest[] {
+    return (this.database.prepare(
+      "SELECT * FROM approval_requests WHERE harness_run_id = ? ORDER BY created_at"
+    ).all(harnessRunId) as ApprovalRequestRow[]).map(toApprovalRequest);
+  }
+
+  createCheckpoint(input: {
+    harnessRunId: string;
+    kind: string;
+    status: string;
+    payload: Record<string, unknown>;
+  }): HarnessCheckpoint {
+    const checkpoint = harnessCheckpointSchema.parse({
+      id: randomUUID(),
+      harnessRunId: input.harnessRunId,
+      kind: input.kind,
+      status: input.status,
+      payload: input.payload,
+      createdAt: new Date().toISOString()
+    });
+    this.database.prepare(`INSERT INTO harness_checkpoints
+      (id, harness_run_id, kind, status, payload_json, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)`)
+      .run(checkpoint.id, checkpoint.harnessRunId, checkpoint.kind, checkpoint.status,
+        JSON.stringify(checkpoint.payload), checkpoint.createdAt);
+    return checkpoint;
+  }
+
+  getLatestCheckpoint(harnessRunId: string): HarnessCheckpoint | null {
+    const row = this.database.prepare(
+      "SELECT * FROM harness_checkpoints WHERE harness_run_id = ? ORDER BY created_at DESC LIMIT 1"
+    ).get(harnessRunId) as HarnessCheckpointRow | undefined;
+    return row ? toHarnessCheckpoint(row) : null;
+  }
+
+  listCheckpoints(harnessRunId: string): HarnessCheckpoint[] {
+    return (this.database.prepare(
+      "SELECT * FROM harness_checkpoints WHERE harness_run_id = ? ORDER BY created_at"
+    ).all(harnessRunId) as HarnessCheckpointRow[]).map(toHarnessCheckpoint);
   }
 }

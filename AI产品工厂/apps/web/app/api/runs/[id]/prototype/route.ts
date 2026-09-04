@@ -2,7 +2,7 @@ import { SqliteProductionRunStore } from "@factory/records";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const store = new SqliteProductionRunStore();
   if (!store.get(id)) return new Response("生产批次不存在", { status: 404 });
@@ -26,7 +26,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         "style-src 'unsafe-inline'",
         "script-src 'unsafe-inline'",
         "img-src data:",
-        `connect-src ${new URL(request.url).origin}/api/v1/recommend`,
+        "connect-src 'none'",
         "font-src 'none'",
         "frame-ancestors 'self'",
         "form-action 'none'",

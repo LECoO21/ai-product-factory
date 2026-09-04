@@ -1,27 +1,37 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
+import { SqliteCodexRuntimeStore } from "@factory/records";
 import { apiError } from "@/lib/api/server-error";
-import {
-  createSessionToken,
-  SESSION_COOKIE_NAME,
-  sessionCookieOptions,
-  verifyInviteCode
-} from "@/lib/auth/session";
+import { isSameOriginAccountMutation } from "@/lib/auth/same-origin";
 
-const loginSchema = z.object({ inviteCode: z.string().trim().min(1).max(200) });
+export const dynamic = "force-dynamic";
 
-export async function POST(request: Request) {
-  const parsed = loginSchema.safeParse(await request.json().catch(() => null));
-  if (!parsed.success) return apiError("INVALID_INVITE_CODE", "请输入邀请码", 400);
+export function POST(request: Request) {
+  if (!isSameOriginAccountMutation(request)) {
+    return apiError("CROSS_SITE_REQUEST_REJECTED", "请求来源无效，请从产品工厂页面重试", 403);
+  }
+  let store: SqliteCodexRuntimeStore | null = null;
   try {
-    if (!verifyInviteCode(parsed.data.inviteCode)) {
-      return apiError("INVALID_INVITE_CODE", "邀请码不正确", 401);
+    store = new SqliteCodexRuntimeStore();
+    if (store.getAccountSnapshot()?.authenticated) {
+      return apiError("ALREADY_AUTHENTICATED", "当前 OpenAI 账户已经登录", 409);
     }
-    const response = NextResponse.json({ authenticated: true });
-    response.cookies.set(SESSION_COOKIE_NAME, createSessionToken(), sessionCookieOptions());
-    return response;
+    const command = store.createCommand({
+      type: "account.login.start",
+      payload: {
+        type: "chatgpt",
+        useHostedLoginSuccessPage: true,
+        appBrand: "chatgpt"
+      }
+    });
+    return NextResponse.json({ command }, { status: 202 });
   } catch (error) {
-    console.error(JSON.stringify({ level: "error", event: "auth.configuration_failed", errorType: error instanceof Error ? error.name : "unknown" }));
-    return apiError("AUTH_NOT_CONFIGURED", "登录服务尚未配置", 503);
+    console.error(JSON.stringify({
+      level: "error",
+      event: "codex_auth.login_command_failed",
+      errorType: error instanceof Error ? error.name : "unknown"
+    }));
+    return apiError("CODEX_RUNTIME_UNAVAILABLE", "Codex 登录服务暂时不可用", 503);
+  } finally {
+    store?.close();
   }
 }

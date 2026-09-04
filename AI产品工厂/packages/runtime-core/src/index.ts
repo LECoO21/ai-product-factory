@@ -57,8 +57,8 @@ export class FactoryRuntimeCore {
     });
     events.emit("thread.configured", {
       stage: run.stage,
-      runtime: "pi-agent",
-      modelProvider: "deepseek",
+      runtime: "codex-app-server",
+      modelProvider: "openai-account",
       controller: "deterministic"
     });
     events.emit("turn.started", { stage: run.stage, objective: run.objective });

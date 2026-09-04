@@ -55,7 +55,7 @@ const applyHunks = (source: string, hunks: string[][]) => {
   for (const hunk of hunks) {
     const header = hunk[0]?.match(/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/);
     if (!header?.[1]) throw new Error("unified patch hunk 格式无效");
-    let cursor = Number(header[1]) - 1 + offset;
+    const cursor = Number(header[1]) - 1 + offset;
     const replacement: string[] = [];
     let consumed = 0;
     for (const line of hunk.slice(1)) {

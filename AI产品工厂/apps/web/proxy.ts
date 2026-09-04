@@ -1,15 +1,18 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
+import { SqliteCodexRuntimeStore } from "@factory/records";
 import {
-  isFactoryAuthenticationRequired,
-  SESSION_COOKIE_NAME,
-  verifySessionToken
+  isCodexAccountAuthenticated,
+  isFactoryAuthBypassed
 } from "./lib/auth/session";
 
 const publicPath = (pathname: string) =>
   pathname === "/login" ||
+  pathname === "/api/auth/account" ||
   pathname === "/api/auth/login" ||
+  pathname === "/api/auth/login/cancel" ||
   pathname === "/api/auth/logout" ||
+  pathname.startsWith("/api/auth/commands/") ||
   pathname === "/api/health" ||
   pathname.startsWith("/_next/") ||
   pathname === "/favicon.ico";
@@ -19,9 +22,18 @@ export async function proxy(request: NextRequest) {
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-trace-id", traceId);
 
-  if (isFactoryAuthenticationRequired() && !publicPath(request.nextUrl.pathname)) {
-    const session = verifySessionToken(request.cookies.get(SESSION_COOKIE_NAME)?.value);
-    if (!session) {
+  if (!isFactoryAuthBypassed() && !publicPath(request.nextUrl.pathname)) {
+    let authenticated = false;
+    let store: SqliteCodexRuntimeStore | null = null;
+    try {
+      store = new SqliteCodexRuntimeStore();
+      authenticated = isCodexAccountAuthenticated(store.getAccountSnapshot());
+    } catch {
+      authenticated = false;
+    } finally {
+      store?.close();
+    }
+    if (!authenticated) {
       if (request.nextUrl.pathname.startsWith("/api/")) {
         return NextResponse.json(
           { error: { code: "AUTH_REQUIRED", userMessage: "请先登录", retryable: false, requestId: traceId } },
@@ -32,7 +44,7 @@ export async function proxy(request: NextRequest) {
       loginUrl.searchParams.set("next", `${request.nextUrl.pathname}${request.nextUrl.search}`);
       return NextResponse.redirect(loginUrl, { headers: { "x-trace-id": traceId } });
     }
-    requestHeaders.set("x-factory-user-id", session.subject);
+    requestHeaders.set("x-factory-user-id", "openai-account-owner");
   }
 
   const response = NextResponse.next({ request: { headers: requestHeaders } });

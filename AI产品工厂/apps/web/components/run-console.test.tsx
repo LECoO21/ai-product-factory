@@ -127,6 +127,15 @@ describe("RunConsole", () => {
     expect(screen.getByRole("button", { name: "重新分析" })).toBeInTheDocument();
   });
 
+  it("treats explicit cancellation as a terminal product flow without retry", () => {
+    render(
+      <RunConsole initialRun={run("cancelled")} initialEvents={[]} initialHarness={null} />
+    );
+
+    expect(screen.getAllByText("产品流程已终止", { exact: false }).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: "重新分析" })).not.toBeInTheDocument();
+  });
+
   it("puts artifacts before collapsed execution details", () => {
     render(
       <RunConsole

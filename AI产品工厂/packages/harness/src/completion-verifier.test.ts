@@ -12,7 +12,7 @@ describe("CompletionVerifier", () => {
     const task = records.createTask("production-run", "verify");
     const run = records.createHarnessRun({
       productionRunId: "production-run", taskId: task.id, sessionPath: "session.jsonl",
-      promptVersion: "1.0.0", model: "deepseek-v4-flash"
+      promptVersion: "1.0.0", model: "account-default"
     });
     const verifier = new CompletionVerifier(records);
 
@@ -33,5 +33,26 @@ describe("CompletionVerifier", () => {
     expect(tampered.decision).toBe("failed");
     if (tampered.decision === "complete") throw new Error("篡改产物不能通过完成验证");
     expect(tampered.failed).toContain("CG-06");
+  });
+
+  it("returns impossible when goal-impossible evidence is registered", () => {
+    const directory = mkdtempSync(join(tmpdir(), "factory-completion-"));
+    const records = new SqliteHarnessRecordStore(join(directory, "factory.sqlite"));
+    const task = records.createTask("production-run", "verify");
+    const run = records.createHarnessRun({
+      productionRunId: "production-run", taskId: task.id, sessionPath: "session.jsonl",
+      promptVersion: "1.0.0", model: "account-default"
+    });
+    const verifier = new CompletionVerifier(records);
+
+    records.registerEvidence({
+      runId: run.id, criterionId: "CG-06", kind: "goal-impossible",
+      observation: { goalImpossible: true }, passed: false
+    });
+
+    const decision = verifier.verify(run.id, ["CG-06"]);
+    expect(decision.decision).toBe("impossible");
+    if (decision.decision === "complete") throw new Error("目标不可能时不能判定完成");
+    expect(decision.nextAction).toContain("不可达成");
   });
 });

@@ -1,12 +1,18 @@
-import { cookies } from "next/headers";
+import { SqliteCodexRuntimeStore } from "@factory/records";
 import {
-  isFactoryAuthenticationRequired,
-  SESSION_COOKIE_NAME,
-  verifySessionToken
+  isCodexAccountAuthenticated,
+  isFactoryAuthBypassed
 } from "./session";
 
 export async function isCurrentRequestAuthenticated() {
-  if (!isFactoryAuthenticationRequired()) return true;
-  const token = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
-  return verifySessionToken(token) !== null;
+  if (isFactoryAuthBypassed()) return true;
+  let store: SqliteCodexRuntimeStore | null = null;
+  try {
+    store = new SqliteCodexRuntimeStore();
+    return isCodexAccountAuthenticated(store.getAccountSnapshot());
+  } catch {
+    return false;
+  } finally {
+    store?.close();
+  }
 }

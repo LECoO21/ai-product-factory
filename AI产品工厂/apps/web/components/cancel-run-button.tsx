@@ -11,7 +11,7 @@ export function CancelRunButton({ runId }: { runId: string }) {
   const [error, setError] = useState<string | null>(null);
 
   async function cancel() {
-    if (!window.confirm("确定取消当前任务吗？已产生的记录会保留。")) return;
+    if (!window.confirm("确定终止这个产品流程吗？已有记录会保留；如需继续，请新建产品。")) return;
     setCancelling(true);
     setError(null);
     try {

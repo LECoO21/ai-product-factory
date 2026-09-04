@@ -1,5 +1,7 @@
 # 第一阶段技术开发文档｜最小可执行 Harness
 
+> 迁移状态（2026-09-02）：本文是 Pi Agent + DeepSeek 最小 Harness 的历史开发基线，不代表当前 Codex App Server 实现；现行迁移边界见 `docs/28-*` 与 `docs/29-*`。
+>
 > 文档状态：G6 已由产品负责人确认（2026-08-25），允许进入本文范围内的代码实施
 >
 > 所属路线：V0.2-B 最小可执行 Harness
@@ -22,7 +24,7 @@
 
 - 单一 `FactoryHarness`，以 Pi Agent 的低层 `Agent` 作为唯一 Agent Loop 底座；
 - `ToolGateway`、`PreToolUse` / `PostToolUse` Hooks 与 P0–P3 权限裁决；
-- `ManualAuthority`：先校验三份手册哈希，再按固定顺序完整加载当前阶段需要的原文；
+- `ManualAuthority`：每个新产品流程开始时先校验三份手册哈希，再按固定顺序完整读取并锁定未压缩快照；流程内复用，完成或终止后释放且不再读取，下一个新产品重新读取；
 - 工作区 `list / read / search / patch`；
 - Git 只读检查；
 - 无 Shell 拼接的受控命令与测试执行；
@@ -62,8 +64,8 @@
 
 ```text
 用户从本地 WebUI 启动“Harness 验证”
-→ ProductionController 创建 implementation 生产批次与持久 Task
-→ Worker 领取 Task，ManualAuthority 校验并加载三份手册
+→ ProductionController 为该新产品流程锁定三份手册快照，并创建 implementation 生产批次与持久 Task
+→ Worker 领取 Task，复用 ManualAuthority 已锁定的快照
 → FactoryHarness 打开本次 Pi Agent Session，加载生产单与完成目标
 → Agent 建立 WorkPlan
 → 通过 ToolGateway 读取独立测试工作区
@@ -485,7 +487,8 @@ type ToolResultEnvelope = {
 
 #### ManualAuthority
 
-- 三份手册全部存在且哈希匹配时按固定顺序加载；
+- 新产品流程首次获取时，三份手册全部存在且哈希匹配并按固定顺序加载；
+- 同一流程重复获取返回相同快照且不重读磁盘；释放后同一流程 ID 不能重新打开原文，新的产品流程 ID 会重新校验和完整读取；
 - 任一缺失或哈希不符时 blocked，且不调用模型；
 - 加载记录只含路径、hash、字符数，不含原文；
 - `.env` 和三份原文不会进入工具日志或 Artifact。

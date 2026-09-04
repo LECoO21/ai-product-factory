@@ -12,3 +12,4 @@ data/
 *.tsbuildinfo
 next-env.d.ts
 .DS_Store
+.next-browser-qa/

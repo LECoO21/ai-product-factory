@@ -55,7 +55,7 @@ const presentations: Record<TaskStatus, { label: string; now: string; action: st
   waiting_user: { label: "等你确认", now: "这一步已有可检查的结果。", action: "请检查下面的结果，再决定是否继续。" },
   succeeded: { label: "已经完成", now: "这一步已经完成，结果和记录已保存。", action: "可以检查结果或返回产品档案。" },
   failed: { label: "处理失败", now: "这一步没有完成，已有记录仍然保留。", action: "查看原因；允许时可重新分析。" },
-  cancelled: { label: "已经停止", now: "这一步已停止，已有记录仍然保留。", action: "可以返回产品档案。" },
+  cancelled: { label: "已经停止", now: "产品流程已终止，已有记录仍然保留。", action: "如需继续，请新建一个产品。" },
   disconnected: { label: "正在恢复连接", now: "页面暂时收不到最新进度，任务可能仍在继续。", action: "正在读取真实状态，请不要重复开始任务。" },
   stale: { label: "状态需要刷新", now: "当前状态无法确认。", action: "请刷新页面读取真实状态。" }
 };

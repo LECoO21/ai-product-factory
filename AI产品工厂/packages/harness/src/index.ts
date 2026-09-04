@@ -5,3 +5,4 @@ export * from "./completion-verifier";
 export * from "./core-tools";
 export * from "./factory-harness";
 export * from "./background-runner";
+export * from "./context-manager";

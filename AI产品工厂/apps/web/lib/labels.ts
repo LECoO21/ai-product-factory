@@ -53,6 +53,14 @@ export const getRunStatusLabel = (run: Pick<ProductionRun, "stage" | "status">) 
     ? waitingApprovalLabels[run.stage] ?? runStatusLabels[run.status]
     : runStatusLabels[run.status];
 
+export const getProjectPrimaryActionLabel = (
+  run: Pick<ProductionRun, "status">,
+  needsApproval: boolean,
+  productFlowCompleted = false
+) => run.status === "cancelled"
+  ? "查看已终止记录"
+  : productFlowCompleted ? "查看完成记录" : needsApproval ? "去确认" : "继续";
+
 export const stageLabels: Record<ProductionStage, string> = {
   intake: "理解产品",
   adaptation: "确定技术方案",

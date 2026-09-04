@@ -45,7 +45,7 @@
 
 | 底线 | 结论 | 证据 |
 | --- | --- | --- |
-| 三份手册权威性 | 保持；原文未修改，运行前后继续 SHA 校验 | `npm run manuals:verify` |
+| 三份手册权威性 | 保持；原文未修改；每个新产品流程开始时校验、完整读取并锁定一次，流程内复用，完成或终止后释放且不再读取；下一个新产品重新读取 | `npm run manuals:verify` |
 | 固定流程由代码掌管 | 通过；`FactoryRuntimeCore` 唯一应用 Turn 终态 | `packages/runtime-core/src/index.ts` |
 | 空结果不得确认 | 通过；Core 在进入审批前再次运行确定性 `hasConfirmableAgentResult` | runtime-core 单元测试 |
 | 命令可追溯和幂等 | 通过；steer/interrupt 统一校验 Thread/Turn/idempotency key | `RuntimeCommandGateway` |

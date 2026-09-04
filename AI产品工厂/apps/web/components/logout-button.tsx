@@ -2,11 +2,12 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { logout } from "@/features/auth/api";
+import { logout, waitForRuntimeCommand } from "@/features/auth/api";
 
 export function LogoutButton() {
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
+  const [failed, setFailed] = useState(false);
   return (
     <button
       type="button"
@@ -14,12 +15,18 @@ export function LogoutButton() {
       disabled={submitting}
       onClick={async () => {
         setSubmitting(true);
-        await logout().catch(() => null);
-        router.replace("/login");
-        router.refresh();
+        setFailed(false);
+        try {
+          await waitForRuntimeCommand(await logout());
+          router.replace("/login");
+          router.refresh();
+        } catch {
+          setFailed(true);
+          setSubmitting(false);
+        }
       }}
     >
-      {submitting ? "退出中…" : "退出"}
+      {submitting ? "退出中…" : failed ? "退出失败，重试" : "退出"}
     </button>
   );
 }
