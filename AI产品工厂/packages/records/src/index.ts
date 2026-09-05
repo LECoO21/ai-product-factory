@@ -536,7 +536,10 @@ export class SqliteProductionRunStore implements ProductionRunStore {
         const revisionRun = this.get(existingRevisionRunId);
         if (revisionRun) return { supersededRun: run, revisionRun };
       }
-      if (run.status !== "waiting_approval" && run.status !== "succeeded") {
+      const failedQuality = run.stage === "automated-quality" && run.status === "failed" &&
+        stage === "implementation" && events.some((event) => event.type === "quality.failed" ||
+          (event.type === "quality.completed" && event.payload.passed === false));
+      if (run.status !== "waiting_approval" && run.status !== "succeeded" && !failedQuality) {
         throw new Error("当前步骤尚未等待确认");
       }
       if (events.some((event) => event.type === "gate.approved")) {

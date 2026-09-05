@@ -14,7 +14,8 @@
     "@factory/harness": "*",
     "@factory/records": "*",
     "@factory/runtime-core": "*",
-    "@factory/shared": "*"
+    "@factory/shared": "*",
+    "playwright": "1.62.1"
   },
   "devDependencies": {
     "tsx": "4.20.6"

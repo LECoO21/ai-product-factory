@@ -71,7 +71,7 @@ const eventLabels: Record<string, string> = {
   "harness.completed": "制作验证完成",
   "harness.command.steer": "已发送调整指令",
   "harness.command.abort": "已请求停止",
-  "harness.command.receipt": "运行控制已生效",
+  "harness.command.receipt": "运行控制回执",
   "gate.requested": "需要你确认",
   "gate.revision_requested": "你已提交修改，正在生成新版本",
   "gate.approved": "你已确认，进入下一步"
@@ -347,7 +347,12 @@ function ConversationStage({
         <Fragment key={entry.key}>
           {index === resolutionIndex ? attachments : null}
           {entry.kind === "output" ? <ChatMessage><ResultDocument output={entry.text} /></ChatMessage> :
-            entry.kind === "activity" ? <ExecutionRecord events={entry.events} /> :
+            entry.kind === "activity" ? <>
+              {entry.events.filter((event) => event.type === "harness.command.receipt" && event.payload.accepted === false).map((event) => (
+                <ChatMessage key={event.id}><p className="form-error" role="alert">指令未执行：{String(event.payload.message ?? "请重试")}</p></ChatMessage>
+              ))}
+              <ExecutionRecord events={entry.events} />
+            </> :
               <ChatMessage user><p>{userActionText(entry.event, run, harnessCompleted)}</p></ChatMessage>}
         </Fragment>
       ))}
@@ -477,11 +482,17 @@ export function RunConsole({
     !["stage-design", "implementation", "real-acceptance"].includes(run.stage) ||
     (run.stage === "implementation" && harnessCompleted) ||
     Boolean(productPrototype);
-  const canRevise = !approvedEvent && !completedLocally && resultIsConfirmable &&
-    (run.status === "waiting_approval" || run.status === "succeeded");
-  const canApprove = Boolean(nextAction) && canRevise && requiredArtifactsReady;
+  const failedQuality = run.stage === "automated-quality" && run.status === "failed" &&
+    events.some((event) => event.type === "quality.failed" ||
+      (event.type === "quality.completed" && event.payload.passed === false));
+  const canRevise = !approvedEvent && !revisionEvent && !completedLocally && (failedQuality ||
+    (resultIsConfirmable && (run.status === "waiting_approval" || run.status === "succeeded")));
+  const canApprove = Boolean(nextAction) && canRevise && !failedQuality && requiredArtifactsReady;
   const active = run.status === "ready" || run.status === "running";
-  const abortPending = stopRequested || events.some((event) => event.type === "harness.command.abort");
+  const latestAbort = [...events].reverse().find((event) => event.type === "harness.command.abort");
+  const abortRejected = latestAbort && events.some((event) => event.type === "harness.command.receipt" &&
+    event.payload.commandSequence === latestAbort.sequence && event.payload.accepted === false);
+  const abortPending = !abortRejected && (stopRequested || Boolean(latestAbort));
   const canCompose = canRevise || (run.status === "running" && !abortPending);
   const busy = approving || revising || stopping;
   const elapsedSeconds = Math.max(0, Math.floor((clock - Date.parse(run.createdAt)) / 1_000));
@@ -602,7 +613,8 @@ export function RunConsole({
               <ChatMessage>
                 <div className="result-footer failure-result-footer">
                   <p>{run.error || "这一步没有完成，已有结果会保留。"}</p>
-                  <RetryRunButton runId={run.id} />
+                  {failedQuality ? <p>在下方说明修改要求，返回产品制作；如果仅需复查，可重新检查原版本。</p> : null}
+                  <RetryRunButton runId={run.id} label={failedQuality ? "仅重新检查" : "重新分析"} />
                 </div>
               </ChatMessage>
             ) : null}
@@ -693,7 +705,7 @@ export function RunConsole({
               disabled={busy || !canCompose || abortPending}
             />
             <div className="chat-composer-actions">
-              <span>{canRevise ? "提交后重做当前步骤，不会直接前进。" : abortPending ? "正在停止…" : "生成过程中也可以补充要求。"}</span>
+              <span>{failedQuality ? "提交后返回产品制作，修复后重新检查。" : canRevise ? "提交后重做当前步骤，不会直接前进。" : abortPending ? "正在停止…" : "生成过程中也可以补充要求。"}</span>
               <div>
                 <button className="chat-stop-button" type="button" onClick={() => void stop()} disabled={busy || abortPending}>
                   <Square aria-hidden="true" />{stopping || abortPending ? "正在停止…" : "终止流程"}

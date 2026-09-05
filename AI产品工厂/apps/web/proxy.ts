@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import { SqliteCodexRuntimeStore } from "@factory/records";
+import { isSameOriginMutation } from "./lib/auth/same-origin";
 import {
   isCodexAccountAuthenticated,
   isFactoryAuthBypassed
@@ -21,6 +22,15 @@ export async function proxy(request: NextRequest) {
   const traceId = request.headers.get("x-trace-id") || randomUUID();
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-trace-id", traceId);
+
+  if (request.nextUrl.pathname.startsWith("/api/") &&
+      !["GET", "HEAD", "OPTIONS"].includes(request.method) &&
+      !isSameOriginMutation(request)) {
+    return NextResponse.json(
+      { error: { code: "INVALID_ORIGIN", userMessage: "请求来源不匹配，请从工作台页面重试", retryable: false, requestId: traceId } },
+      { status: 403, headers: { "x-trace-id": traceId } }
+    );
+  }
 
   if (!isFactoryAuthBypassed() && !publicPath(request.nextUrl.pathname)) {
     let authenticated = false;
@@ -55,5 +65,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|.*\\.(?:png|jpg|jpeg|gif|svg|ico|webp)$).*)"]
+  matcher: ["/api/:path*", "/((?!_next/static|_next/image|.*\\.(?:png|jpg|jpeg|gif|svg|ico|webp)$).*)"]
 };

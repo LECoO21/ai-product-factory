@@ -201,7 +201,11 @@ export class ProductionController {
     const normalizedFeedback = feedback.trim();
     if (!normalizedFeedback) throw new Error("请填写补充回答或修改意见");
     const events = this.runs.events(run.id);
-    if (!hasConfirmableAgentResult(events)) {
+    const failedQuality = run.stage === "automated-quality" &&
+      (run.status === "failed" || events.some((event) => event.type === "gate.revision_requested")) &&
+      events.some((event) => event.type === "quality.failed" ||
+        (event.type === "quality.completed" && event.payload.passed === false));
+    if (!hasConfirmableAgentResult(events) && !failedQuality) {
       throw new Error("AI 结果尚未生成，不能提交修改");
     }
     if (events.some((event) => event.type === "gate.approved")) {

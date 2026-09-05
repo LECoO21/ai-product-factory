@@ -48,6 +48,24 @@ const requireNextRun = (run: ProductionRun | null) => {
 };
 
 describe("ProductionController", () => {
+  it("returns failed quality to implementation once, preserving the failure and feedback", () => {
+    const databasePath = join(mkdtempSync(join(tmpdir(), "factory-quality-rework-")), "factory.sqlite");
+    const project = createProject(databasePath);
+    const runs = new SqliteProductionRunStore(databasePath);
+    const quality = runs.create(project.id, "检查第一版", "automated-quality");
+    runs.append(quality.id, "text.delta", { delta: "脚本语法错误：Unexpected token" });
+    runs.append(quality.id, "quality.completed", { passed: false, checks: [] });
+    runs.transition(quality.id, "failed", "自动检查未通过");
+    const controller = createProductionController(runs);
+    expect(() => controller.approveAndContinue(quality.id)).toThrow();
+    const first = controller.reviseFromFeedback(quality.id, "修复脚本错误并保留原功能");
+    expect(first.revisionRun.stage).toBe("implementation");
+    expect(first.revisionRun.objective).toContain("修复脚本错误");
+    expect(controller.reviseFromFeedback(quality.id, "再次提交").revisionRun.id).toBe(first.revisionRun.id);
+    expect(runs.events(quality.id).some((event) => event.type === "quality.completed")).toBe(true);
+    expect(runs.listForProject(project.id)).toHaveLength(2);
+  });
+
   it("creates one same-stage revision from confirmation feedback", () => {
     const directory = mkdtempSync(join(tmpdir(), "factory-workflow-"));
     const databasePath = join(directory, "factory.sqlite");

@@ -1,7 +1,7 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createProductFactory, createProductionController } from "@factory/production";
-import { SqliteProductionRunStore, SqliteProjectRegistry } from "@factory/records";
+import { SqliteHarnessRecordStore, SqliteProductionRunStore, SqliteProjectRegistry } from "@factory/records";
 
 export default function globalSetup() {
   const dataDir = process.env.FACTORY_E2E_DATA_DIR;
@@ -101,6 +101,31 @@ export default function globalSetup() {
   runs.append(historyRun.id, "agent.completed");
   runs.transition(historyRun.id, "waiting_approval");
 
+  const qualityProject = factory.createProject({ name: "E2E 自动检查失败", description: "回归测试", prd: requirement, workspacePath: null });
+  const qualityRun = runs.create(qualityProject.id, "检查产品", "automated-quality");
+  runs.append(qualityRun.id, "text.delta", { delta: "自动检查失败：按钮处理函数不存在，需要修复产品。" });
+  runs.append(qualityRun.id, "quality.completed", { passed: false, checks: [{ id: "browser-runtime", passed: false }] });
+  runs.transition(qualityRun.id, "failed", "浏览器脚本错误");
+
+  const securityProject = factory.createProject({ name: "E2E 预览隔离", description: "只使用测试数据", prd: requirement, workspacePath: null });
+  const securityRun = runs.create(securityProject.id, "安全预览", "stage-design");
+  const securityHtml = `<!doctype html><html><body>
+    <button onclick="document.getElementById('result').textContent='交互可用'">测试按钮</button>
+    <p id="result">等待</p><p id="storage"></p><p id="network"></p>
+    <script>
+      try { localStorage.getItem('fixture'); document.getElementById('storage').textContent='未隔离'; }
+      catch { document.getElementById('storage').textContent='存储已隔离'; }
+      fetch('/api/projects').then(() => { document.getElementById('network').textContent='未隔离'; })
+        .catch(() => { document.getElementById('network').textContent='网络已隔离'; });
+    </script></body></html>`;
+  runs.append(securityRun.id, "artifact.created", { kind: "product-prototype-html", content: securityHtml });
+  const records = new SqliteHarnessRecordStore();
+  const task = records.createTask(securityRun.id, "附件隔离测试");
+  const harness = records.createHarnessRun({ productionRunId: securityRun.id, taskId: task.id, sessionPath: "test.jsonl", promptVersion: "1", model: "fixture" });
+  const artifactPath = join(dataDir, "isolation.html");
+  writeFileSync(artifactPath, securityHtml);
+  const securityArtifact = records.registerArtifact({ runId: harness.id, kind: "html", path: artifactPath, mimeType: "text/html" });
+
   writeFileSync(
     join(dataDir, "fixtures.json"),
     JSON.stringify({
@@ -108,7 +133,11 @@ export default function globalSetup() {
       failedRunId: failedRun.id,
       secondStageRunId: secondStageRun.id,
       revisionSourceRunId: revisionSourceRun.id,
-      historyRunId: historyRun.id
+      historyRunId: historyRun.id,
+      qualityRunId: qualityRun.id,
+      securityRunId: securityRun.id,
+      securityProjectId: securityProject.id,
+      securityArtifactId: securityArtifact.id
     }),
     "utf8"
   );

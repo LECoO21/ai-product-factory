@@ -8,9 +8,7 @@ import {
   CodexAccountService,
   CodexAppServerClient,
   CodexAppServerRuntime,
-  createDeepSeekHarnessDriver,
-  createProductionCodexHarnessDriver,
-  DeepSeekRuntime
+  createProductionCodexHarnessDriver
 } from "@factory/agent-runtime";
 import {
   BackgroundRunner,
@@ -64,6 +62,7 @@ import {
   type VerifiedMediaArtifact
 } from "./media-production";
 import { shouldCloseProductManualSnapshot } from "./manual-lifecycle";
+import { startRunControlBridge as createRunControlBridge } from "./run-control";
 
 const fallbackProjectRoot = findFactoryRoot(process.cwd());
 const projectRoot = process.env.FACTORY_PROJECT_ROOT?.trim() || fallbackProjectRoot;
@@ -84,7 +83,6 @@ const runtime = new CodexAppServerRuntime({
   bindings: codexRecords,
   defaultCwd: projectRoot
 });
-const deepseekRuntime = new DeepSeekRuntime();
 const pollIntervalMs = Number(process.env.WORKER_POLL_MS ?? 1200);
 const runOnce = process.env.WORKER_ONCE === "1";
 const shutdownGraceMs = Number(process.env.WORKER_SHUTDOWN_GRACE_MS ?? 5_000);
@@ -275,7 +273,7 @@ const previousResult = (run: ProductionRun) => {
     .events(previous.id)
     .filter((event) => event.type === "text.delta")
     .map((event) => String(event.payload.delta ?? ""))
-    .join("");
+    .join("") || previous.error || "上一阶段没有生成文本结果，请检查失败证据";
   if (!revisionSource || revisionSource.stage === run.stage) return output;
 
   const previousSameStage = history.find(
@@ -318,14 +316,14 @@ const previousImplementationArtifact = (run: ProductionRun) => {
 async function executeAutomatedQuality({ run, events }: RuntimeTurnContext): Promise<TurnOutcome> {
   const source = previousImplementationArtifact(run);
   if (!source) {
-    return { kind: "failed", message: "找不到已确认的第一版产品 HTML，无法自动检查" };
+    const message = "找不到已确认的第一版产品 HTML，无法自动检查";
+    events.legacy("quality.failed", { message });
+    return { kind: "failed", message };
   }
 
   events.legacy("quality.started", { sourceRunId: source.run.id });
   try {
-    const report = await runProductQuality(source.content, {
-      origin: process.env.FACTORY_WEB_ORIGIN?.trim() || "http://localhost:3000"
-    });
+    const report = await runProductQuality(source.content);
     events.legacy("text.delta", { delta: formatProductQualityReport(report) });
     events.legacy("quality.completed", {
       passed: report.passed,
@@ -359,65 +357,15 @@ const prepareHarnessWorkspace = (productionRunId: string) => {
   return workspaceRoot;
 };
 
-type ControlDispatchResult = {
-  accepted: boolean;
-  message: string;
-  retryWhenInactive?: boolean;
-};
-
 const startRunControlBridge = (
   run: ProductionRun,
   events: RuntimeTurnContext["events"],
-  dispatch: (
-    type: "harness.command.steer" | "harness.command.abort",
-    value: string
-  ) => Promise<ControlDispatchResult>
-) => {
-  let cursor = 0;
-  let closed = false;
-  let activeDrain: Promise<void> | null = null;
-
-  const drain = async () => {
-    for (const command of runs.events(run.id, cursor)) {
-      if (command.type !== "harness.command.steer" && command.type !== "harness.command.abort") {
-        cursor = Math.max(cursor, command.sequence);
-        continue;
-      }
-      const value = command.type === "harness.command.abort"
-        ? String(command.payload.reason ?? "用户停止")
-        : String(command.payload.message ?? "");
-      let receipt: ControlDispatchResult;
-      try {
-        receipt = await dispatch(command.type, value);
-      } catch {
-        receipt = { accepted: false, message: "Codex 控制指令发送失败" };
-      }
-      if (!receipt.accepted && receipt.retryWhenInactive) return;
-      cursor = Math.max(cursor, command.sequence);
-      events.legacy("harness.command.receipt", {
-        commandSequence: command.sequence,
-        commandType: command.type,
-        accepted: receipt.accepted,
-        message: receipt.message
-      });
-    }
-  };
-
-  const tick = () => {
-    if (closed || activeDrain) return;
-    activeDrain = drain().finally(() => {
-      activeDrain = null;
-    });
-  };
-  const timer = setInterval(tick, 400);
-  tick();
-
-  return async () => {
-    closed = true;
-    clearInterval(timer);
-    await activeDrain;
-  };
-};
+  dispatch: Parameters<typeof createRunControlBridge>[0]["dispatch"]
+) => createRunControlBridge({
+  read: (cursor) => runs.events(run.id, cursor),
+  receipt: (payload) => events.legacy("harness.command.receipt", payload),
+  dispatch
+});
 
 async function executeHarnessValidation({
   run,
@@ -461,8 +409,8 @@ async function executeHarnessValidation({
       });
       definitions.push(createBackgroundToolDefinition(background, factoryTask.id));
       definitions.forEach((definition) => gateway.register(definition));
-      const driver = createDeepSeekHarnessDriver({
-        runtime: deepseekRuntime,
+      const driver = createProductionCodexHarnessDriver({
+        runtime,
         workspaceRoot,
         runId: harnessRun.id,
         systemPrompt: buildFactoryHarnessSystemPrompt(manuals.snapshot.context),
@@ -497,7 +445,7 @@ async function executeHarnessValidation({
     return {
       accepted: receipt.accepted,
       message: receipt.message,
-      retryWhenInactive: !receipt.accepted
+      retryWhenInactive: !receipt.accepted && /当前没有可/.test(receipt.message)
     };
   });
   const shouldResume = harnessRecords.getHarnessRunForProductionRun(run.id)?.status === "waiting_user";
@@ -647,16 +595,16 @@ async function executeAgentStation({
 
   const stopControls = startRunControlBridge(run, events, async (type, value) => {
     const receipt = type === "harness.command.abort"
-      ? await deepseekRuntime.abort(run.id, value)
-      : await deepseekRuntime.steer(run.id, value);
+      ? await runtime.abort(run.id, value)
+      : await runtime.steer(run.id, value);
     return {
       accepted: receipt.accepted,
-      message: receipt.reason ?? (receipt.accepted ? "指令已送达 DeepSeek" : "DeepSeek 调用尚未开始"),
-      retryWhenInactive: !receipt.accepted
+      message: receipt.reason ?? (receipt.accepted ? "指令已送达 Codex" : "Codex 调用尚未开始"),
+      retryWhenInactive: receipt.retryWhenInactive === true
     };
   });
   try {
-    for await (const event of deepseekRuntime.run(assignment)) {
+    for await (const event of runtime.run(assignment)) {
       executionEvents.push(event);
       events.legacy(event.type, event.payload);
       if (event.type === "agent.completed") completed = true;
@@ -931,7 +879,10 @@ export function stopFactoryWorker() {
   shutdownPromise ??= shutdownCodexRuntime({
     activeRunId,
     activeRunFinished,
-    abort: (runId, reason) => runtime.abort(runId, reason),
+    abort: (runId, reason) => runtime.abort(
+      harnessRecords.getHarnessRunForProductionRun(runId)?.id ?? runId,
+      reason
+    ),
     close: closeCodexClient,
     graceMs: Number.isFinite(shutdownGraceMs) ? Math.max(0, shutdownGraceMs) : 5_000,
     onAbortError: (error) => logCodexFailure("worker.shutdown_interrupt_failed", error, {

@@ -1,3 +1,5 @@
+import { inspectProductInBrowser } from "./product-browser-quality";
+
 export type ProductQualityCheck = {
   id: string;
   label: string;
@@ -59,9 +61,9 @@ export function inspectProductHtml(html: string): ProductQualityReport {
     ),
     makeCheck(
       "interaction-binding",
-      "交互逻辑",
+      "交互绑定静态检查",
       hasInteractionBinding,
-      "页面已绑定用户操作逻辑",
+      "发现事件绑定文本，实际行为仍需浏览器验证",
       "页面没有发现可执行的用户操作逻辑"
     ),
     makeCheck(
@@ -87,14 +89,16 @@ export function inspectProductHtml(html: string): ProductQualityReport {
   };
 }
 
-type FetchImplementation = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
-
-export async function runProductQuality(
-  html: string,
-  _options: { origin: string; fetchImpl?: FetchImplementation }
-): Promise<ProductQualityReport> {
+export async function runProductQuality(html: string): Promise<ProductQualityReport> {
   const staticReport = inspectProductHtml(html);
-  const checks = [...staticReport.checks];
+  const checks = [...staticReport.checks, ...await inspectProductInBrowser(html)];
+  if (staticReport.internalApiPaths.length > 0) {
+    const network = checks.find((check) => check.id === "isolated-network");
+    if (network) {
+      network.passed = false;
+      network.detail = "HTML 引用了产品 API，但本轮没有独立产品后端证据；不调用工厂同名接口代替验证";
+    }
+  }
 
   return {
     passed: checks.every((check) => check.passed),
@@ -113,6 +117,7 @@ export function formatProductQualityReport(report: ProductQualityReport) {
     "",
     report.passed ? "结论：自动检查通过，可以进入人工验收。" : "结论：自动检查失败，不能进入人工验收。",
     `检查项：${passedCount}/${report.checks.length} 通过`,
+    "范围：静态检查和隔离浏览器控件冒烟；不代表全部 PRD 功能、多端或后端接口验收通过。",
     "",
     ...lines
   ].join("\n");

@@ -27,6 +27,35 @@ describe("CreateProjectForm", () => {
     startProductionRun.mockReset();
   });
 
+  it.each([false, true])("keeps input modes below the field without a back link (compact: %s)", (compact) => {
+    render(<CreateProjectForm compact={compact} />);
+    const input = screen.getByLabelText("描述产品需求");
+    const modes = screen.getByRole("group", { name: "输入方式" });
+    const submit = screen.getByRole("button", { name: "发送并开始分析" });
+
+    expect(screen.queryByRole("link", { name: "返回" })).not.toBeInTheDocument();
+    expect(input.compareDocumentPosition(modes) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(modes.parentElement).toBe(submit.parentElement);
+    expect(submit).toBeDisabled();
+  });
+
+  it("preserves the draft when switching input modes", async () => {
+    const user = userEvent.setup();
+    render(<CreateProjectForm />);
+    const input = screen.getByLabelText("描述产品需求");
+    await user.type(input, "我的产品需求草稿");
+    await user.click(screen.getByRole("button", { name: "粘贴 PRD" }));
+
+    expect(input).toHaveValue("我的产品需求草稿");
+    expect(input).toHaveAttribute("placeholder", "把已有 PRD 文档内容粘贴到这里…");
+    expect(screen.getByRole("button", { name: "粘贴 PRD" })).toHaveAttribute("aria-pressed", "true");
+    expect(createProject).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "描述需求" }));
+    expect(input).toHaveValue("我的产品需求草稿");
+    expect(screen.getByRole("button", { name: "描述需求" })).toHaveAttribute("aria-pressed", "true");
+  });
+
   it("prevents duplicate creation while a valid requirement is submitting", async () => {
     const user = userEvent.setup();
     createProject.mockReturnValue(new Promise(() => undefined));

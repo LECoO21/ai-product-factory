@@ -22,6 +22,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     headers: {
       "Cache-Control": "no-store",
       "Content-Security-Policy": [
+        "sandbox allow-scripts",
         "default-src 'none'",
         "style-src 'unsafe-inline'",
         "script-src 'unsafe-inline'",

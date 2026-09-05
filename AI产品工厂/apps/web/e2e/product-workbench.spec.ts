@@ -8,6 +8,10 @@ type Fixtures = {
   secondStageRunId: string;
   revisionSourceRunId: string;
   historyRunId: string;
+  qualityRunId: string;
+  securityRunId: string;
+  securityProjectId: string;
+  securityArtifactId: string;
 };
 
 const fixtures = (): Fixtures => {
@@ -34,9 +38,47 @@ test("opens the personal factory directly without login or logout controls", asy
   await page.goto("/");
 
   await expect(page).toHaveURL("/");
+  await expect(page).toHaveTitle("ProdLine | AI 产品工厂");
+  await expect(page.getByRole("link", { name: "返回 ProdLine 首页" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "今天想做什么产品？" })).toBeVisible();
   await expect(page.getByText("进入 AI 产品工厂")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "退出登录" })).toHaveCount(0);
+});
+
+test("rejects cross-site writes even when Web login is disabled", async ({ request }) => {
+  const response = await request.post("/api/projects", {
+    headers: { origin: "https://external.example", "content-type": "text/plain" },
+    data: JSON.stringify({ name: "不得创建", description: "恶意来源测试", prd: "此请求应在进入业务处理之前被拒绝，不得创建产品记录。", workspacePath: null })
+  });
+  expect(response.status()).toBe(403);
+});
+
+test("repairs failed quality from the chat composer without approving a broken result", async ({ page }) => {
+  const id = fixtures().qualityRunId;
+  await page.goto(`/runs/${id}`);
+  await expect(page.getByRole("button", { name: "仅重新检查" })).toBeVisible();
+  await expect(page.getByText("等待验收", { exact: true })).toHaveCount(0);
+  await page.getByRole("textbox", { name: "补充回答或修改意见" }).fill("修复按钮函数，然后重新运行浏览器检查");
+  await page.getByRole("button", { name: "提交并重新分析" }).click();
+  await page.waitForURL((url) => url.pathname.startsWith("/runs/") && !url.pathname.endsWith(id));
+  const snapshot = await (await page.request.get(`/api/runs/${page.url().split("/").at(-1)}`)).json();
+  expect(snapshot.run.stage).toBe("implementation");
+  await expect(page.getByText("自动检查失败：按钮处理函数不存在，需要修复产品。", { exact: true })).toBeVisible();
+});
+
+test("preserves preview interaction while denying factory privileges and deleted attachments", async ({ page }) => {
+  const fixture = fixtures();
+  await page.goto(`/api/runs/${fixture.securityRunId}/prototype`);
+  await expect(page.getByText("存储已隔离")).toBeVisible();
+  await expect(page.getByText("网络已隔离")).toBeVisible();
+  await page.getByRole("button", { name: "测试按钮" }).click();
+  await expect(page.getByText("交互可用")).toBeVisible();
+  const artifactUrl = `/api/runs/${fixture.securityRunId}/artifacts/${fixture.securityArtifactId}`;
+  const response = await page.request.get(artifactUrl);
+  expect(response.headers()["content-disposition"]).toMatch(/^attachment;/);
+  const removed = await page.request.delete(`/api/projects/${fixture.securityProjectId}`, { headers: { origin: "http://localhost:3100" } });
+  expect(removed.status()).toBe(200);
+  expect((await page.request.get(artifactUrl)).status()).toBe(404);
 });
 
 test("creates one product, starts one run, and restores it after refresh", async ({ page }) => {
@@ -177,6 +219,7 @@ test("continues under the same product and restores its result and approval as c
 
 test("reads the real run status before reconnecting an interrupted event stream", async ({ page }) => {
   const projectResponse = await page.request.post("/api/projects", {
+    headers: { origin: "http://localhost:3100" },
     data: {
       name: "E2E 断线恢复产品",
       description: "通用产品",
@@ -186,6 +229,7 @@ test("reads the real run status before reconnecting an interrupted event stream"
   });
   const { project } = await projectResponse.json() as { project: { id: string } };
   const runResponse = await page.request.post(`/api/projects/${project.id}/runs`, {
+    headers: { origin: "http://localhost:3100" },
     data: { objective: "验证断线恢复" }
   });
   const { run } = await runResponse.json() as { run: { id: string } };

@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { ArrowUp, FileText, Sparkles } from "lucide-react";
@@ -47,20 +46,6 @@ export function CreateProjectForm({ compact = false }: { compact?: boolean }) {
 
   return (
     <form className={`intake-composer${compact ? " intake-composer-compact" : ""}`} onSubmit={submit} noValidate>
-      <div className="product-type-tabs" role="group" aria-label="输入方式">
-        {inputModes.map((mode) => (
-          <button
-            type="button"
-            aria-pressed={inputMode === mode}
-            className={inputMode === mode ? "active" : ""}
-            onClick={() => setInputMode(mode)}
-            key={mode}
-          >
-            {mode === "描述需求" ? <Sparkles aria-hidden="true" /> : <FileText aria-hidden="true" />}
-            {mode}
-          </button>
-        ))}
-      </div>
       <label className="sr-only" htmlFor={compact ? "prd-home" : "prd"}>描述产品需求</label>
       <textarea
         id={compact ? "prd-home" : "prd"}
@@ -76,11 +61,20 @@ export function CreateProjectForm({ compact = false }: { compact?: boolean }) {
       />
       {error ? <p id={compact ? "prd-home-error" : "prd-error"} className="form-error" role="alert">{error}</p> : null}
       <div className="composer-actions">
-        {!compact ? (
-          <Link href="/" className="secondary-button">
-            返回
-          </Link>
-        ) : <span>发送后立即进入第 1 步</span>}
+        <div className="product-type-tabs" role="group" aria-label="输入方式">
+          {inputModes.map((mode) => (
+            <button
+              type="button"
+              aria-pressed={inputMode === mode}
+              className={inputMode === mode ? "active" : ""}
+              onClick={() => setInputMode(mode)}
+              key={mode}
+            >
+              {mode === "描述需求" ? <Sparkles aria-hidden="true" /> : <FileText aria-hidden="true" />}
+              {mode}
+            </button>
+          ))}
+        </div>
         <button className="composer-submit" type="submit" disabled={submitting || !requirement.trim()} aria-label="发送并开始分析" aria-busy={submitting}>
           {submitting ? <span className="button-spinner" aria-hidden="true" /> : <ArrowUp aria-hidden="true" />}
         </button>

@@ -8,11 +8,12 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
     const name = `E2E 删除测试产品 ${viewport.width}`;
     // Playwright's isolated server/data directory is used; no real product is touched.
     const created = await page.request.post("/api/projects", {
+      headers: { origin: "http://localhost:3100" },
       data: { name, description: "测试产品", workspacePath: null, prd: "用于验证产品删除按钮，取消、确认及历史记录刷新，不调用模型。" }
     });
     expect(created.status()).toBe(201);
     const { project } = await created.json() as { project: { id: string } };
-    const started = await page.request.post(`/api/projects/${project.id}/runs`, { data: { objective: "验证排队产品删除" } });
+    const started = await page.request.post(`/api/projects/${project.id}/runs`, { headers: { origin: "http://localhost:3100" }, data: { objective: "验证排队产品删除" } });
     expect(started.ok()).toBe(true);
     const { run } = await started.json() as { run: { id: string } };
     const list = await page.request.get("/api/projects");
@@ -51,7 +52,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
     expect(after.projects.map((entry) => entry.id).sort()).toEqual(before.projects.filter((entry) => entry.id !== project.id).map((entry) => entry.id).sort());
     expect((await page.request.get(`/api/runs/${run.id}`)).status()).toBe(404);
     expect((await page.request.get(`/api/runs/${run.id}/events`)).status()).toBe(404);
-    expect((await page.request.post(`/api/projects/${project.id}/runs`, { data: { objective: "不能重新开始" } })).status()).toBe(404);
+    expect((await page.request.post(`/api/projects/${project.id}/runs`, { headers: { origin: "http://localhost:3100" }, data: { objective: "不能重新开始" } })).status()).toBe(404);
     expect(errors).toEqual([]);
   });
 }

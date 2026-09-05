@@ -85,6 +85,28 @@ describe("RunConsole", () => {
     expect(screen.getByText("本阶段不会部署或发布。", { exact: false })).toBeInTheDocument();
   });
 
+  it("offers corrective feedback after failed quality but never an approval", async () => {
+    const user = userEvent.setup();
+    reviseProductionRun.mockResolvedValue({ run: { ...run("ready", "implementation"), id: "fixed-run" } });
+    render(<RunConsole initialRun={run("failed", "automated-quality")} initialHarness={null}
+      initialEvents={[event(1, "text.delta", { delta: "自动检查结果：脚本错误，检查没有通过。" }), event(2, "quality.completed", { passed: false })]} />);
+    expect(screen.getByRole("button", { name: "仅重新检查" })).toBeVisible();
+    expect(screen.queryByText("等待验收")).not.toBeInTheDocument();
+    await user.type(screen.getByRole("textbox", { name: "补充回答或修改意见" }), "修复脚本错误");
+    await user.click(screen.getByRole("button", { name: "提交并重新分析" }));
+    expect(reviseProductionRun).toHaveBeenCalledWith("run-1", "修复脚本错误");
+    expect(push).toHaveBeenCalledWith("/runs/fixed-run");
+  });
+
+  it("shows rejected controls in the conversation and permits another stop", () => {
+    render(<RunConsole initialRun={run("running")} initialHarness={null} initialEvents={[
+      event(1, "harness.command.abort", { reason: "停止" }),
+      event(2, "harness.command.receipt", { commandSequence: 1, accepted: false, message: "指令发送失败，请重试" })
+    ]} />);
+    expect(screen.getByRole("alert")).toHaveTextContent("指令未执行");
+    expect(screen.getByRole("button", { name: "终止流程" })).toBeEnabled();
+  });
+
   it("allows the product owner to answer questions or request changes before approval", async () => {
     const user = userEvent.setup();
     reviseProductionRun.mockResolvedValue({ run: { ...run("ready"), id: "run-2" } });

@@ -5,6 +5,7 @@ import { SqliteProductionRunStore } from "@factory/records";
 import { hasConfirmableAgentResult } from "@factory/shared";
 import { CancelRunButton } from "@/components/cancel-run-button";
 import { CreateProjectForm } from "@/components/create-project-form";
+import { BrandMark } from "@/components/brand-mark";
 import { runStatusLabels, stageLabels } from "@/lib/labels";
 
 export const dynamic = "force-dynamic";
@@ -35,6 +36,7 @@ export default function HomePage() {
   return (
     <div className="page factory-home">
       <header className="factory-home-header">
+        <div className="home-brand-orb" aria-hidden="true"><BrandMark /></div>
         <h1>今天想做什么产品？</h1>
       </header>
 

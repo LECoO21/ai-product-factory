@@ -9,7 +9,7 @@ import "./globals.css";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Naxe | AI 产品工厂",
+  title: "ProdLine | AI 产品工厂",
   description: "把 PRD 变成可控制、可验证、可恢复的产品生产流程。"
 };
 

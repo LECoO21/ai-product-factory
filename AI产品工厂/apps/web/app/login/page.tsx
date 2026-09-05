@@ -9,7 +9,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   return (
     <main className="login-page">
       <section className="login-card">
-        <div className="login-brand"><BrandMark /><strong>Naxe</strong></div>
+        <div className="login-brand"><BrandMark /><strong>ProdLine</strong></div>
         <h1>进入 AI 产品工厂</h1>
         <p>先登录你自己的 OpenAI（ChatGPT）账户。</p>
         <LoginForm nextPath={nextPath} />

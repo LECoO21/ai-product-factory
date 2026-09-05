@@ -38,7 +38,7 @@ export function FactorySidebar({
         onClick={() => setMobileOpen(true)}
       >
         <Menu aria-hidden="true" />
-        <span>Naxe</span>
+        <span>ProdLine</span>
       </button>
       <button
         className={`sidebar-overlay${mobileOpen ? " is-visible" : ""}`}
@@ -52,9 +52,9 @@ export function FactorySidebar({
         aria-label="产品工厂导航"
       >
       <div className="sidebar-brand-row">
-        <Link href="/" className="brand" aria-label="返回 Naxe 首页" onClick={() => setMobileOpen(false)}>
+        <Link href="/" className="brand" aria-label="返回 ProdLine 首页" onClick={() => setMobileOpen(false)}>
           <BrandMark />
-          <strong>Naxe</strong>
+          <strong>ProdLine</strong>
         </Link>
         <button
           className="sidebar-collapse-toggle"

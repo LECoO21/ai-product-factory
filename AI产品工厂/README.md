@@ -1,4 +1,6 @@
-# AI 产品工厂
+# ProdLine · AI 产品工厂
+
+当前界面与高优先级问题修复说明见 [ProdLine 视觉规范与审查修复](./docs/30-ProdLine视觉规范与高优先级修复.md)。
 
 > 版本：V0.6，保留 G1–G9 产品流程，Agent 运行底座迁移为 Codex App Server
 >
@@ -117,7 +119,7 @@ V0.6 保留 `@factory/protocol`、`@factory/runtime-core`、G1–G9、ToolGatewa
 
 ## 本地运行
 
-环境要求：Node.js 22 或更高版本，以及本机可用的 Codex CLI。
+环境要求：Node.js 22 或更高版本、本机可用的 Codex CLI，以及用于产品自动检查的 Chrome。也可安装 Playwright Chromium，并设置 `FACTORY_BROWSER_CHANNEL=chromium`；浏览器不可用时检查会失败，不会静默放行。
 
 ```bash
 npm install
@@ -126,6 +128,8 @@ npm run dev
 ```
 
 终端会显示实际访问地址，默认是 `http://localhost:3000`；端口被占用时 Next.js 会自动选择其他端口。
+
+开发服务默认仅监听 `127.0.0.1`，个人无登录版不应暴露到公网。所有 API 写入请求必须携带与访问地址匹配的 `Origin`；代理部署需显式设置可信的 `FACTORY_WEB_ORIGIN`，不默认信任转发头。同源校验不能替代公网访问认证。
 
 默认从 `PATH` 启动 `codex app-server`。只有在 Codex 不在 `PATH` 中时才需在 `.env` 修改 `CODEX_BINARY`；`CODEX_MODEL` 留空时使用本机 Codex 当前配置。WebUI 当前不提供登录和退出入口，也不要求填写模型 API Key。
 

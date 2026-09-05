@@ -6,7 +6,7 @@ import { RotateCcw } from "lucide-react";
 import { retryProductionRun } from "@/features/production-run/api";
 import { getErrorMessage } from "@/lib/api/client";
 
-export function RetryRunButton({ runId }: { runId: string }) {
+export function RetryRunButton({ runId, label = "重新分析" }: { runId: string; label?: string }) {
   const router = useRouter();
   const [retrying, setRetrying] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -27,7 +27,7 @@ export function RetryRunButton({ runId }: { runId: string }) {
     <div className="retry-run-control">
       <button className="primary-button" type="button" onClick={retry} disabled={retrying}>
         <RotateCcw aria-hidden="true" />
-        {retrying ? "正在重新开始…" : "重新分析"}
+        {retrying ? "正在重新开始…" : label}
       </button>
       {error ? <p className="form-error" role="alert">{error}</p> : null}
     </div>

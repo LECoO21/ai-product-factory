@@ -472,7 +472,7 @@ export class CodexAppServerRuntime implements AgentRuntime {
 
   async steer(runId: string, message: string) {
     const active = this.active.get(runId);
-    if (!active) return { accepted: false, reason: "当前没有可引导的 Codex Turn" };
+    if (!active) return { accepted: false, reason: "当前没有可引导的 Codex Turn", retryWhenInactive: true };
     await this.options.client.request("turn/steer", {
       threadId: active.threadId,
       expectedTurnId: active.turnId,
@@ -483,7 +483,7 @@ export class CodexAppServerRuntime implements AgentRuntime {
 
   async abort(runId: string, _reason: string) {
     const active = this.active.get(runId);
-    if (!active) return { accepted: false, reason: "当前没有可停止的 Codex Turn" };
+    if (!active) return { accepted: false, reason: "当前没有可停止的 Codex Turn", retryWhenInactive: true };
     await this.options.client.request("turn/interrupt", active);
     return { accepted: true };
   }
