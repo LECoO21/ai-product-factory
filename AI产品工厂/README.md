@@ -1,4 +1,10 @@
-# ProdLine · AI 产品工厂
+<p align="center">
+  <img src="../assets/prodline-hero.png" alt="ProdLine — From idea to product." width="100%">
+</p>
+
+# ProdLine · 工程使用说明
+
+[返回项目首页](../README.md) · [本地运行](#本地运行) · [使用流程](#最简单的使用方式) · [文档导航](#文档导航)
 
 当前界面与高优先级问题修复说明见 [ProdLine 视觉规范与审查修复](./docs/30-ProdLine视觉规范与高优先级修复.md)。
 
