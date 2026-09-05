@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { ArrowLeft, ArrowUpRight, FileText } from "lucide-react";
 import { getProductFactory } from "@factory/production";
 import { SqliteProductionRunStore } from "@factory/records";
 import { hasConfirmableAgentResult } from "@factory/shared";
 import { StartRunButton } from "@/components/start-run-button";
 import { RetryRunButton } from "@/components/retry-run-button";
+import { DeleteProjectButton } from "@/components/delete-project-button";
 import { getProjectPrimaryActionLabel, runStatusLabels, stageLabels } from "@/lib/labels";
 
 export const dynamic = "force-dynamic";
@@ -35,17 +37,24 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   return (
     <div className="page simple-page">
       <header className="simple-project-header">
-        <Link href="/" className="back-link">← 返回</Link>
-        <h1>{project.name}</h1>
-        {latestRunHasEmptyResult && latestRun ? (
-          <RetryRunButton runId={latestRun.id} />
-        ) : latestRun ? (
-          <Link href={`/runs/${latestRun.id}`} className="primary-button">
-            {getProjectPrimaryActionLabel(latestRun, latestRunNeedsApproval, productFlowCompleted)}
-          </Link>
-        ) : (
-          <StartRunButton projectId={project.id} />
-        )}
+        <Link href="/" className="back-link"><ArrowLeft aria-hidden="true" />返回产品列表</Link>
+        <div className="project-title-block">
+          <span>产品档案</span>
+          <h1>{project.name}</h1>
+        </div>
+        <div className="project-header-actions">
+          {latestRunHasEmptyResult && latestRun ? (
+            <RetryRunButton runId={latestRun.id} />
+          ) : latestRun ? (
+            <Link href={`/runs/${latestRun.id}`} className="primary-button">
+              {getProjectPrimaryActionLabel(latestRun, latestRunNeedsApproval, productFlowCompleted)}
+              <ArrowUpRight aria-hidden="true" />
+            </Link>
+          ) : (
+            <StartRunButton projectId={project.id} />
+          )}
+          <DeleteProjectButton projectId={project.id} projectName={project.name} />
+        </div>
       </header>
 
       {recentRuns.length > 0 ? (
@@ -65,7 +74,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
       ) : null}
 
       <details className="prd-details">
-        <summary>查看 PRD</summary>
+        <summary><FileText aria-hidden="true" />查看 PRD</summary>
         <pre className="prd-text">{project.prd}</pre>
       </details>
     </div>

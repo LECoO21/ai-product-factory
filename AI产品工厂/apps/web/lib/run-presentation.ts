@@ -8,6 +8,13 @@ import {
 
 export { getProductPrototype, stripProductPrototype };
 
+/** Display legacy workflow titles plainly without changing saved Agent output. */
+export function getResultHeading(heading: string): string {
+  return /^(?:PRD\s*)?接单(?:与资料)?体检(?:\s*[|｜:：·/—-]+\s*产品理解摘要)?$/i.test(heading.trim())
+    ? "需求分析"
+    : heading;
+}
+
 export type EmptyRunPresentation = {
   message: string;
   canRetry: boolean;

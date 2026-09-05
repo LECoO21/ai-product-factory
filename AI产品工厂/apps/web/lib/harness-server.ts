@@ -14,7 +14,7 @@ export const getHarnessView = (productionRunId: string): HarnessView | null => {
     status: run.status,
     stopReason: run.stopReason,
     plan: records.getPlan(run.id),
-    tools: records.listInvocations(run.id).slice(-20).map((tool) => ({
+    tools: records.listInvocations(run.id).map((tool) => ({
       toolCallId: tool.toolCallId,
       toolName: tool.toolName,
       permission: tool.permission,

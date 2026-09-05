@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
+import { ArrowUp, FileText, Sparkles } from "lucide-react";
 import { createProject } from "@/features/product-intake/api";
 import { startProductionRun } from "@/features/production-run/api";
 import { getErrorMessage } from "@/lib/api/client";
@@ -46,16 +47,16 @@ export function CreateProjectForm({ compact = false }: { compact?: boolean }) {
 
   return (
     <form className={`intake-composer${compact ? " intake-composer-compact" : ""}`} onSubmit={submit} noValidate>
-      <div className="product-type-tabs" role="tablist" aria-label="输入方式">
+      <div className="product-type-tabs" role="group" aria-label="输入方式">
         {inputModes.map((mode) => (
           <button
             type="button"
-            role="tab"
-            aria-selected={inputMode === mode}
+            aria-pressed={inputMode === mode}
             className={inputMode === mode ? "active" : ""}
             onClick={() => setInputMode(mode)}
             key={mode}
           >
+            {mode === "描述需求" ? <Sparkles aria-hidden="true" /> : <FileText aria-hidden="true" />}
             {mode}
           </button>
         ))}
@@ -79,9 +80,9 @@ export function CreateProjectForm({ compact = false }: { compact?: boolean }) {
           <Link href="/" className="secondary-button">
             返回
           </Link>
-        ) : <span>发送后立即开始分析</span>}
+        ) : <span>发送后立即进入第 1 步</span>}
         <button className="composer-submit" type="submit" disabled={submitting || !requirement.trim()} aria-label="发送并开始分析" aria-busy={submitting}>
-          {submitting ? "…" : "↑"}
+          {submitting ? <span className="button-spinner" aria-hidden="true" /> : <ArrowUp aria-hidden="true" />}
         </button>
       </div>
     </form>

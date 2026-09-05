@@ -52,7 +52,7 @@ export type RunSnapshot = z.infer<typeof runSnapshotSchema>;
 export function startProductionRun(projectId: string) {
   return requestJson(`/api/projects/${encodeURIComponent(projectId)}/runs`, {
     method: "POST",
-    body: JSON.stringify({ objective: "执行 PRD 接单体检并输出产品理解摘要" }),
+    body: JSON.stringify({ objective: "分析产品需求并输出产品理解、缺失信息和待确认问题" }),
     schema: runResponseSchema
   });
 }

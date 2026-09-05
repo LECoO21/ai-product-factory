@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { Play } from "lucide-react";
 import { startProductionRun } from "@/features/production-run/api";
 import { getErrorMessage } from "@/lib/api/client";
 
@@ -25,6 +26,7 @@ export function StartRunButton({ projectId }: { projectId: string }) {
   return (
     <div className="start-run-control">
       <button className="primary-button" type="button" onClick={start} disabled={starting}>
+        <Play aria-hidden="true" />
         {starting ? "正在开始…" : "开始分析"}
       </button>
       {error ? <p className="form-error" role="alert">{error}</p> : null}

@@ -25,7 +25,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       );
     }
     const input = (await request.json().catch(() => ({}))) as { objective?: string };
-    const objective = input.objective?.trim() || "执行 PRD 接单体检";
+    const objective = input.objective?.trim() || "分析产品需求并输出产品理解、缺失信息和待确认问题";
     const run = runs.create(id, objective);
     return NextResponse.json({ run }, { status: 201 });
   } catch (error) {

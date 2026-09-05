@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { getProductFactory } from "@factory/production";
 import { FactorySidebar } from "@/components/factory-sidebar";
 import { isCurrentRequestAuthenticated } from "@/lib/auth/current-user";
+import { isFactoryAuthBypassed } from "@/lib/auth/session";
 import "./globals.css";
 
 export const dynamic = "force-dynamic";
@@ -13,17 +14,18 @@ export const metadata: Metadata = {
 };
 
 export default async function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
+  const authenticationRequired = !isFactoryAuthBypassed();
   const authenticated = await isCurrentRequestAuthenticated();
   if (!authenticated) {
-    return <html lang="zh-CN"><body>{children}</body></html>;
+    return <html lang="zh-CN" data-scroll-behavior="smooth"><body>{children}</body></html>;
   }
   const projects = getProductFactory().listProjects();
 
   return (
-    <html lang="zh-CN" suppressHydrationWarning>
+    <html lang="zh-CN" data-scroll-behavior="smooth" suppressHydrationWarning>
       <body suppressHydrationWarning>
         <div className="app-shell">
-          <FactorySidebar projects={projects} />
+          <FactorySidebar projects={projects} showLogout={authenticationRequired} />
           <main className="factory-main">{children}</main>
         </div>
       </body>

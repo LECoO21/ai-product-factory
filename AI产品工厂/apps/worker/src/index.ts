@@ -180,32 +180,32 @@ const stationInstructions: Record<
 > = {
   intake: {
     systemPrompt:
-      "你是 AI 产品工厂的接单体检工位。只分析输入 PRD，不修改文件。使用普通产品语言，输出产品理解、核心任务、重大缺失和推荐下一步。",
-    outputRequest: "请生成一份供产品负责人确认的简洁产品理解摘要。"
+      "你负责分析产品需求。只分析输入 PRD，不修改文件。使用普通产品语言，输出对需求的理解、核心任务、重大缺失和推荐下一步。",
+    outputRequest: "请生成一份供产品负责人确认的简洁需求分析，文档标题使用“需求分析”。"
   },
   adaptation: {
     systemPrompt:
-      "你是 AI 产品工厂的技术适配工位。严格遵守随任务提供的三份原始手册，根据 PRD 给出唯一推荐方案，不罗列多套技术让产品负责人选择。",
+      "你负责制定产品的技术方案。严格遵守随任务提供的三份原始手册，根据 PRD 给出唯一推荐方案，不罗列多套技术让产品负责人选择。",
     outputRequest:
-      "请按《技术适配声明》的要求，输出产品形态、采用方案、按需模块、偏离项、强制底线和真正需要产品负责人决定的问题。"
+      "请按《技术适配声明》的要求，输出产品形态、采用方案、按需模块、偏离项、强制底线和真正需要产品负责人决定的问题，文档标题使用“技术方案”。"
   },
   "stage-design": {
     systemPrompt:
-      "你是 AI 产品工厂的阶段设计工位。严格遵守随任务提供的三份原始手册，只设计当前第一阶段，输出非技术人员也能照着验收的开发计划，并同时制作当前产品自己的可交互基础 HTML。基础 HTML 是产品方向原型，不得做成产品工厂流程说明页。",
+      "你负责制定当前阶段的开发计划。严格遵守随任务提供的三份原始手册，只设计当前第一阶段，输出非技术人员也能照着验收的开发计划，并同时制作当前产品自己的可交互基础 HTML。基础 HTML 是产品方向原型，不得做成产品工厂流程说明页。",
     outputRequest:
-      "请生成第一阶段开发计划，包含目标、范围、主链路、状态、接口、测试、验收清单、风险和明确不做。文档末尾必须依次输出 <!-- PRODUCT_PROTOTYPE_START -->、完整且无需外部依赖的单文件 HTML、<!-- PRODUCT_PROTOTYPE_END -->。HTML 必须体现当前产品的核心输入、操作、成功、失败和空状态，可直接点击验收；清楚标注为基础稿，不得调用真实付费服务或伪造真实数据。"
+      "请生成第一阶段开发计划，文档标题使用“开发计划”，包含目标、范围、主链路、状态、接口、测试、验收清单、风险和明确不做。文档末尾必须依次输出 <!-- PRODUCT_PROTOTYPE_START -->、完整且无需外部依赖的单文件 HTML、<!-- PRODUCT_PROTOTYPE_END -->。HTML 必须体现当前产品的核心输入、操作、成功、失败和空状态，可直接点击验收；清楚标注为基础稿，不得调用真实付费服务或伪造真实数据。"
   },
   implementation: {
     systemPrompt:
-      "你是 AI 产品工厂的制作产品工位。严格遵守随任务提供的三份原始手册、已确认开发计划和产品基础稿，制作当前第一阶段的可运行产品。只制作当前产品，不得输出产品工厂自己的流程演示。",
+      "你负责实现当前阶段的产品功能。严格遵守随任务提供的三份原始手册、已确认开发计划和产品基础稿，制作当前第一阶段的可运行产品。只制作当前产品，不得输出产品工厂自己的流程演示。",
     outputRequest:
-      "请先简洁说明本次制作完成的功能、用户可见状态、限制和验收方法。文档末尾必须依次输出 <!-- PRODUCT_PROTOTYPE_START -->、完整且无需外部依赖的单文件 HTML、<!-- PRODUCT_PROTOTYPE_END -->。HTML 必须是当前产品的第一版可运行结果，覆盖核心输入、操作、加载、成功、失败和空状态；不得外连资源、不得泄露密钥、不得把示例数据冒充真实服务。"
+      "文档标题使用“产品实现结果”，先简洁说明本次制作完成的功能、用户可见状态、限制和验收方法。文档末尾必须依次输出 <!-- PRODUCT_PROTOTYPE_START -->、完整且无需外部依赖的单文件 HTML、<!-- PRODUCT_PROTOTYPE_END -->。HTML 必须是当前产品的第一版可运行结果，覆盖核心输入、操作、加载、成功、失败和空状态；不得外连资源、不得泄露密钥、不得把示例数据冒充真实服务。"
   },
   "release-preparation": {
     systemPrompt:
-      "你是 AI 产品工厂的上线方案工位。严格遵守三份原始手册，只生成当前产品的上线方案，不执行 Git push、建仓库、登录平台、购买资源、配置正式凭证或部署。",
+      "你负责制定产品的上线方案。严格遵守三份原始手册，只生成当前产品的上线方案，不执行 Git push、建仓库、登录平台、购买资源、配置正式凭证或部署。",
     outputRequest:
-      "请生成简洁上线方案，包含候选版本、目标环境、必要配置键名、自动检查与人工验收证据、发布前确认项、人工发布步骤、回滚方案和明确未执行事项。不得输出任何真实密钥值。"
+      "请生成简洁上线方案，文档标题使用“上线方案”，包含候选版本、目标环境、必要配置键名、自动检查与人工验收证据、发布前确认项、人工发布步骤、回滚方案和明确未执行事项。不得输出任何真实密钥值。"
   }
 };
 
@@ -290,7 +290,7 @@ const previousResult = (run: ProductionRun) => {
     .filter((event) => event.type === "text.delta")
     .map((event) => String(event.payload.delta ?? ""))
     .join("");
-  return `需要处理的确认结果：\n${output}\n\n上一版同工位完整结果：\n${sameStageOutput}`;
+  return `需要处理的确认结果：\n${output}\n\n上一版同阶段完整结果：\n${sameStageOutput}`;
 };
 
 const previousImplementationArtifact = (run: ProductionRun) => {
@@ -598,16 +598,17 @@ const buildAssignment = (
     runId: run.id,
     systemPrompt: instruction.systemPrompt,
     prompt: [
-      `生产目标：${run.objective}`,
+      `本次任务：${run.objective}`,
       `产品名称：${project.name}`,
       `PRD：\n${project.prd}`,
-      `上一工位结果：\n${previousResult(run)}`,
+      `上一阶段结果：\n${previousResult(run)}`,
       `三份原始手册全文：\n${manualContext}`,
       `素材生产能力：\n${mediaCapabilityContext(
         project,
         codexRecords.getCapabilitySnapshot()?.capabilities ?? []
       )}`,
       "素材规则：预检的“可尝试”不等于生产成功。需要图片时必须真实调用 imagegen，并让 App Server 返回带有可验证 savedPath 的 imageGeneration 完成事件；图片、音频、3D 均不得用文字声明、占位文件或环境变量伪造成功。",
+      "表达要求：用简短、准确的日常语言描述任务和结果，文档标题使用本次明确指定的名称。系统流程标题不使用“接单”“体检”“工位”等比喻；产品业务本身需要的专业术语照常使用。",
       instruction.outputRequest
     ].join("\n\n"),
     model: process.env.CODEX_MODEL?.trim() || "account-default",
@@ -624,7 +625,7 @@ async function executeAgentStation({
 }: RuntimeTurnContext): Promise<TurnOutcome> {
   const manuals = manualAuthorities.acquire(project.id);
   const assignment = buildAssignment(run, project, manuals.snapshot.context);
-  if (!assignment) return { kind: "blocked", message: "当前工位尚未接入受控执行工具" };
+  if (!assignment) return { kind: "blocked", message: "当前阶段尚未接入受控执行工具" };
   if (run.stage === "implementation") {
     const unavailable = unavailableMediaStations(
       project,

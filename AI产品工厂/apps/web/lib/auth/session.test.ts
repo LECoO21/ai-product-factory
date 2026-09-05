@@ -7,15 +7,23 @@ import {
 describe("Codex account authentication", () => {
   afterEach(() => vi.unstubAllEnvs());
 
-  it("requires authentication by default", () => {
+  it("opens the personal workspace without authentication by default", () => {
+    vi.stubEnv("FACTORY_AUTH_REQUIRED", "");
     vi.stubEnv("FACTORY_AUTH_BYPASS", "");
-    expect(isFactoryAuthBypassed()).toBe(false);
+    expect(isFactoryAuthBypassed()).toBe(true);
   });
 
-  it("allows only the explicit test bypass value", () => {
-    vi.stubEnv("FACTORY_AUTH_BYPASS", "true");
+  it("restores authentication only with an explicit opt-in", () => {
+    vi.stubEnv("FACTORY_AUTH_REQUIRED", "true");
+    vi.stubEnv("FACTORY_AUTH_BYPASS", "");
+    expect(isFactoryAuthBypassed()).toBe(false);
+    vi.stubEnv("FACTORY_AUTH_REQUIRED", "1");
     expect(isFactoryAuthBypassed()).toBe(true);
-    vi.stubEnv("FACTORY_AUTH_BYPASS", "1");
+  });
+
+  it("lets the new requirement switch override the retired bypass setting", () => {
+    vi.stubEnv("FACTORY_AUTH_REQUIRED", "true");
+    vi.stubEnv("FACTORY_AUTH_BYPASS", "true");
     expect(isFactoryAuthBypassed()).toBe(false);
   });
 

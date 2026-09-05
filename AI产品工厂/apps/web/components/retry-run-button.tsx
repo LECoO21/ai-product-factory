@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { RotateCcw } from "lucide-react";
 import { retryProductionRun } from "@/features/production-run/api";
 import { getErrorMessage } from "@/lib/api/client";
 
@@ -25,6 +26,7 @@ export function RetryRunButton({ runId }: { runId: string }) {
   return (
     <div className="retry-run-control">
       <button className="primary-button" type="button" onClick={retry} disabled={retrying}>
+        <RotateCcw aria-hidden="true" />
         {retrying ? "正在重新开始…" : "重新分析"}
       </button>
       {error ? <p className="form-error" role="alert">{error}</p> : null}

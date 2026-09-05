@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { LogOut } from "lucide-react";
 import { logout, waitForRuntimeCommand } from "@/features/auth/api";
 
 export function LogoutButton() {
@@ -12,6 +13,8 @@ export function LogoutButton() {
     <button
       type="button"
       className="sidebar-logout"
+      aria-label={submitting ? "正在退出" : failed ? "退出失败，重试" : "退出登录"}
+      title={failed ? "退出失败，重试" : "退出登录"}
       disabled={submitting}
       onClick={async () => {
         setSubmitting(true);
@@ -26,7 +29,8 @@ export function LogoutButton() {
         }
       }}
     >
-      {submitting ? "退出中…" : failed ? "退出失败，重试" : "退出"}
+      <LogOut aria-hidden="true" />
+      <span>{submitting ? "退出中…" : failed ? "退出失败，重试" : "退出"}</span>
     </button>
   );
 }

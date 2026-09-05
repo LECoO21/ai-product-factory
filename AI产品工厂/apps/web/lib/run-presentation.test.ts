@@ -4,6 +4,7 @@ import {
   getEmptyRunPresentation,
   getHarnessTestEvidence,
   getProductPrototype,
+  getResultHeading,
   getStageReviewGuidance,
   stripProductPrototype
 } from "./run-presentation";
@@ -19,6 +20,28 @@ const run = (status: ProductionRun["status"], error: string | null = null): Prod
   error,
   createdAt: "2026-08-22T00:00:00.000Z",
   updatedAt: "2026-08-22T00:01:00.000Z"
+});
+
+describe("getResultHeading", () => {
+  it.each([
+    "PRD 接单体检 | 产品理解摘要",
+    "PRD 接单体检｜产品理解摘要",
+    "接单与资料体检",
+    "接单体检"
+  ])("presents the known legacy workflow heading %s as plain language", (heading) => {
+    expect(getResultHeading(heading)).toBe("需求分析");
+  });
+
+  it.each([
+    "体检预约",
+    "医疗体检流程",
+    "接单与资料体检服务说明",
+    "PRD 接单体检 | 医疗产品需求",
+    "技术方案",
+    ""
+  ])("preserves medical, domain and other headings: %s", (heading) => {
+    expect(getResultHeading(heading)).toBe(heading);
+  });
 });
 
 describe("getEmptyRunPresentation", () => {

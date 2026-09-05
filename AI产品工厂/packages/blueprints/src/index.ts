@@ -93,7 +93,7 @@ const mediaSignals: Array<{ kind: MediaKind; rules: SignalRule[] }> = [
 const baseStages: BlueprintStage[] = [
   {
     id: "intake",
-    title: "接单与资料体检",
+    title: "需求分析",
     purpose: "确认输入、约束、冲突和重大缺失。",
     requiredChecks: ["input-traceability", "assumption-disclosure"],
     optional: false

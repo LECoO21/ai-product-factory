@@ -3,12 +3,27 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
+import {
+  Boxes,
+  History,
+  Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Plus,
+  X
+} from "lucide-react";
 import type { ProjectSummary } from "@factory/shared";
 import { BrandMark } from "@/components/brand-mark";
 import { statusLabels } from "@/lib/labels";
 import { LogoutButton } from "@/components/logout-button";
 
-export function FactorySidebar({ projects }: { projects: ProjectSummary[] }) {
+export function FactorySidebar({
+  projects,
+  showLogout = false
+}: {
+  projects: ProjectSummary[];
+  showLogout?: boolean;
+}) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -22,8 +37,8 @@ export function FactorySidebar({ projects }: { projects: ProjectSummary[] }) {
         aria-expanded={mobileOpen}
         onClick={() => setMobileOpen(true)}
       >
-        <span aria-hidden="true">☰</span>
-        Naxe
+        <Menu aria-hidden="true" />
+        <span>Naxe</span>
       </button>
       <button
         className={`sidebar-overlay${mobileOpen ? " is-visible" : ""}`}
@@ -48,7 +63,13 @@ export function FactorySidebar({ projects }: { projects: ProjectSummary[] }) {
           aria-expanded={!collapsed}
           onClick={() => mobileOpen ? setMobileOpen(false) : setCollapsed((current) => !current)}
         >
-          <span aria-hidden="true">{mobileOpen ? "×" : collapsed ? "›" : "‹"}</span>
+          {mobileOpen ? (
+            <X aria-hidden="true" />
+          ) : collapsed ? (
+            <PanelLeftOpen aria-hidden="true" />
+          ) : (
+            <PanelLeftClose aria-hidden="true" />
+          )}
         </button>
       </div>
 
@@ -59,28 +80,24 @@ export function FactorySidebar({ projects }: { projects: ProjectSummary[] }) {
           aria-label="新建产品"
           onClick={() => setMobileOpen(false)}
         >
-          <span aria-hidden="true">＋</span>
+          <Plus aria-hidden="true" />
           <span className="sidebar-label">新建产品</span>
         </Link>
         <Link
-          href="/#projects"
+          href="/"
           className={pathname === "/" ? "active" : ""}
-          aria-label="产品"
+          aria-label="所有产品"
           onClick={() => setMobileOpen(false)}
         >
-          <span aria-hidden="true">▦</span>
-          <span className="sidebar-label">产品</span>
+          <Boxes aria-hidden="true" />
+          <span className="sidebar-label">所有产品</span>
         </Link>
       </nav>
 
-      <div className="mobile-logout">
-        <LogoutButton />
-      </div>
-
       <section className="sidebar-history" aria-labelledby="sidebar-history-title">
         <div className="sidebar-section-head">
-          <span id="sidebar-history-title">最近产品</span>
-          <Link href="/#projects">全部</Link>
+          <span id="sidebar-history-title"><History aria-hidden="true" />最近产品</span>
+          <span>{Math.min(projects.length, 20)} / 20</span>
         </div>
         <div className="sidebar-project-list">
           {projects.slice(0, 20).map((project) => (
@@ -99,9 +116,9 @@ export function FactorySidebar({ projects }: { projects: ProjectSummary[] }) {
       </section>
 
       <div className="sidebar-foot">
-        <span aria-hidden="true" />
-        <span>生产工作台</span>
-        <LogoutButton />
+        <span className="sidebar-account-mark" aria-hidden="true"><BrandMark /></span>
+        <span>个人工作台</span>
+        {showLogout ? <LogoutButton /> : null}
       </div>
       </aside>
     </>

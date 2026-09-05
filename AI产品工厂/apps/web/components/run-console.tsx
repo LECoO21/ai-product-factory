@@ -1,11 +1,21 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
+import {
+  ArrowDown,
+  ArrowUpRight,
+  Check,
+  ChevronDown,
+  FileCheck2,
+  History,
+  ListChecks,
+  Send,
+  Square
+} from "lucide-react";
 import {
   getProductPrototype,
   hasConfirmableAgentResult,
-  stripProductPrototype,
   type ProductionRun,
   type ProductionStage,
   type RunEvent
@@ -26,12 +36,15 @@ import { getErrorMessage } from "@/lib/api/client";
 import {
   getEmptyRunPresentation,
   getHarnessTestEvidence,
+  getResultHeading,
   getStageReviewGuidance
 } from "@/lib/run-presentation";
 import { connectRunStream } from "@/lib/stream/run-stream-client";
 import { mergeRunEvents } from "@/lib/stream/run-stream";
 import { RetryRunButton } from "@/components/retry-run-button";
 import type { HarnessView } from "@/lib/harness-types";
+import type { ConversationRun } from "@/lib/run-conversation";
+import { buildChatEntries } from "@/lib/run-chat";
 
 const eventLabels: Record<string, string> = {
   "run.created": "任务已创建",
@@ -41,6 +54,9 @@ const eventLabels: Record<string, string> = {
   "text.delta": "AI 输出",
   "tool.started": "开始执行",
   "tool.completed": "执行完成",
+  "plan.updated": "执行计划已更新",
+  "artifact.created": "产物已生成",
+  "run.cancelled": "当前任务已停止",
   "agent.completed": "AI 已完成",
   "agent.failed": "AI 处理失败",
   "run.blocked": "等待配置",
@@ -62,10 +78,10 @@ const eventLabels: Record<string, string> = {
 };
 
 const simpleStages: Array<{ ids: ProductionStage[]; label: string }> = [
-  { ids: ["intake"], label: "理解产品" },
-  { ids: ["adaptation"], label: "确定方案" },
+  { ids: ["intake"], label: "需求分析" },
+  { ids: ["adaptation"], label: "技术方案" },
   { ids: ["stage-design"], label: "开发计划" },
-  { ids: ["implementation"], label: "验证产品" },
+  { ids: ["implementation"], label: "制作产品" },
   { ids: ["automated-quality", "real-acceptance"], label: "测试验收" },
   { ids: ["release-preparation"], label: "上线方案" },
   { ids: ["release-readiness"], label: "上线检查" },
@@ -151,7 +167,7 @@ function ResultDocument({ output }: { output: string }) {
         const value = line.trim();
         if (!value || /^---+$/.test(value)) return null;
         const heading = value.match(/^#{1,6}\s+(.*)$/);
-        if (heading) return <h3 key={index}>{cleanInline(heading[1] ?? "")}</h3>;
+        if (heading) return <h3 key={index}>{getResultHeading(cleanInline(heading[1] ?? ""))}</h3>;
         const bullet = value.match(/^[-*]\s+(.*)$/);
         if (bullet) return <p className="result-bullet" key={index}>{cleanInline(bullet[1] ?? "")}</p>;
         return <p key={index}>{cleanInline(value)}</p>;
@@ -162,46 +178,25 @@ function ResultDocument({ output }: { output: string }) {
 
 function HarnessPanel({
   productionRunId,
-  runStatus,
   harness
 }: {
   productionRunId: string;
-  runStatus: ProductionRun["status"];
   harness: HarnessView;
 }) {
-  const [message, setMessage] = useState("");
-  const [sending, setSending] = useState(false);
-  const [controlMessage, setControlMessage] = useState<string | null>(null);
   const { failed: failedTest, passed: passedTest } = getHarnessTestEvidence(harness.evidence);
-
-  async function control(kind: "steer" | "abort") {
-    if (
-      kind === "abort" &&
-      !window.confirm("确定终止这个产品流程吗？已有记录会保留；如需继续，请新建产品。")
-    ) return;
-    setSending(true);
-    setControlMessage(null);
-    try {
-      if (kind === "steer") {
-        await steerProductionRun(productionRunId, message, crypto.randomUUID());
-        setMessage("");
-        setControlMessage("调整指令已发送");
-      } else {
-        await abortProductionRun(productionRunId, "产品负责人从页面停止", crypto.randomUUID());
-        setControlMessage("停止请求已发送");
-      }
-    } catch (error) {
-      setControlMessage(getErrorMessage(error, "操作失败"));
-    } finally {
-      setSending(false);
-    }
-  }
+  const toolRecords = (tools: HarnessView["tools"]) => tools.map((tool) => (
+    <div key={tool.toolCallId}>
+      <strong>{tool.toolName}</strong>
+      <span>{toolStatusLabels[tool.status] ?? "状态待刷新"}</span>
+      {tool.summary ? <p>{tool.summary}</p> : null}
+    </div>
+  ));
 
   return (
-    <section className="panel harness-panel" aria-labelledby="validation-title">
+    <section className="panel harness-panel" aria-labelledby={`validation-title-${productionRunId}`}>
       <div className="run-panel-head">
         <div>
-          <h2 id="validation-title">制作验证</h2>
+          <h2 id={`validation-title-${productionRunId}`}>制作验证</h2>
           <p>{harness.objective}</p>
         </div>
         <span className={`run-status run-status-${harness.status}`}>
@@ -230,7 +225,7 @@ function HarnessPanel({
                 rel="noreferrer"
                 aria-label={`查看${artifactKindLabels[artifact.kind] ?? artifact.kind}`}
               >
-                <strong>{artifactKindLabels[artifact.kind] ?? "运行产物"}</strong>
+                <strong>{artifactKindLabels[artifact.kind] ?? "运行产物"}<ArrowUpRight aria-hidden="true" /></strong>
                 <span>{artifact.status === "ready" ? "可以查看" : "尚未完成"} · {formatBytes(artifact.size)}</span>
               </a>
             ))}
@@ -238,38 +233,26 @@ function HarnessPanel({
         ) : <p className="harness-empty">产物还在生成。</p>}
       </div>
 
-      {runStatus === "running" ? (
-        <div className="harness-controls">
-          <label htmlFor="steer-message">需要调整时告诉 AI</label>
-          <div>
-            <input id="steer-message" value={message} onChange={(event) => setMessage(event.target.value)} placeholder="例如：先检查测试报错" />
-            <button type="button" onClick={() => void control("steer")} disabled={sending || !message.trim()}>发送</button>
-            <button className="danger-button" type="button" onClick={() => void control("abort")} disabled={sending}>终止流程</button>
-          </div>
-          {controlMessage ? <p role="status">{controlMessage}</p> : null}
-        </div>
-      ) : null}
-
       <details className="execution-details">
-        <summary>查看执行详情</summary>
+        <summary><ListChecks aria-hidden="true" />查看执行详情<ChevronDown className="details-chevron" aria-hidden="true" /></summary>
         {harness.plan.length ? (
           <ol className="harness-plan" aria-label="执行计划">
             {harness.plan.map((item) => (
               <li className={item.status} key={item.id}>
-                <span>{item.status === "completed" ? "✓" : item.status === "in_progress" ? "→" : "·"}</span>
+                <span>{item.status === "completed" ? <Check aria-hidden="true" /> : item.status === "in_progress" ? "→" : "·"}</span>
                 {item.text}
               </li>
             ))}
           </ol>
         ) : <p className="harness-empty">正在建立计划。</p>}
+        {harness.tools.length > 20 ? (
+          <details className="chat-execution-details">
+            <summary>查看更早的 {harness.tools.length - 20} 条工具记录</summary>
+            <div className="harness-tool-list">{toolRecords(harness.tools.slice(0, -20))}</div>
+          </details>
+        ) : null}
         <div className="harness-tool-list" aria-label="最近 20 条工具记录">
-          {harness.tools.length ? harness.tools.map((tool) => (
-            <div key={tool.toolCallId}>
-              <strong>{tool.toolName}</strong>
-              <span>{toolStatusLabels[tool.status] ?? "状态待刷新"}</span>
-              {tool.summary ? <p>{tool.summary}</p> : null}
-            </div>
-          )) : <p className="harness-empty">还没有工具记录。</p>}
+          {harness.tools.length ? toolRecords(harness.tools.slice(-20)) : <p className="harness-empty">还没有工具记录。</p>}
         </div>
       </details>
 
@@ -278,29 +261,152 @@ function HarnessPanel({
   );
 }
 
+function ChatMessage({ user = false, children }: { user?: boolean; children: ReactNode }) {
+  return (
+    <div className={`chat-message chat-message-${user ? "user" : "assistant"}`}>
+      <div className={`chat-message-content${user ? " chat-user-bubble" : ""}`}>{children}</div>
+    </div>
+  );
+}
+
+function ExecutionRecord({ events }: { events: RunEvent[] }) {
+  const list = (items: RunEvent[]) => (
+    <ol className="event-list">
+      {items.map((event) => (
+        <li key={event.id}>
+          <span className="event-dot" />
+          <div>
+            <strong>{event.type.startsWith("tool.") && (event.payload.status === "failed" || event.payload.success === false)
+              ? "执行失败" : eventLabels[event.type] ?? "执行记录"}</strong>
+            {typeof event.payload.toolName === "string" ? <p>{event.payload.toolName}</p> : null}
+            {typeof event.payload.message === "string" ? <p>{event.payload.message}</p> : null}
+            {typeof event.payload.error === "string" ? <p>原因：{event.payload.error}</p> : null}
+            {typeof event.payload.summary === "string" ? <p>{event.payload.summary}</p> : null}
+            {typeof event.payload.explanation === "string" ? <p>{event.payload.explanation}</p> : null}
+            {event.type === "plan.updated" && Array.isArray(event.payload.plan) ? (
+              <ol className="chat-plan-record">
+                {event.payload.plan.map((item: unknown, index: number) => {
+                  if (!item || typeof item !== "object" || !("step" in item) || typeof item.step !== "string") return null;
+                  const status = "status" in item ? item.status : null;
+                  return <li key={index}>{item.step} · {status === "completed" ? "已完成" : status === "in_progress" ? "进行中" : "待处理"}</li>;
+                })}
+              </ol>
+            ) : null}
+          </div>
+        </li>
+      ))}
+    </ol>
+  );
+  return (
+    <details className="chat-execution-details run-log-details">
+      <summary><History aria-hidden="true" />查看运行记录 · {events.length} 条<ChevronDown className="details-chevron" aria-hidden="true" /></summary>
+      {events.length > 20 ? (
+        <details>
+          <summary>查看更早的 {events.length - 20} 条记录</summary>
+          {list(events.slice(0, -20))}
+        </details>
+      ) : null}
+      {list(events.slice(-20))}
+    </details>
+  );
+}
+
+function userActionText(event: RunEvent, run: ProductionRun, harnessCompleted: boolean) {
+  if (event.type === "gate.revision_requested") return String(event.payload.feedback ?? "请重新分析当前步骤");
+  if (event.type === "harness.command.steer") return String(event.payload.message ?? "调整当前任务");
+  if (event.type === "harness.command.abort") return String(event.payload.reason ?? "终止流程");
+  return harnessCompleted ? "确认验证结果" : nextActions[run.stage]?.button ?? "确认当前结果";
+}
+
+function ConversationStage({
+  run, events, harness, status, children
+}: ConversationRun & { status?: ReactNode; children?: ReactNode }) {
+  const entries = useMemo(() => buildChatEntries(events), [events]);
+  const prototype = getProductPrototype(events);
+  const stage = simpleStages.find((item) => item.ids.includes(run.stage));
+  const revised = events.some((event) => event.type === "gate.revision_requested");
+  const harnessCompleted = events.some((event) => event.type === "harness.completed");
+  const resolutionIndex = entries.findIndex((entry) => entry.kind === "user" && entry.event.type.startsWith("gate."));
+  const previewLabel = getStageReviewGuidance(run.stage, prototype?.href ?? null)?.previewLabel ??
+    (run.stage === "real-acceptance" ? "打开产品验收" : "查看制作结果");
+  const attachments = prototype || harness ? (
+    <ChatMessage>
+      <div className="chat-artifacts">
+        {prototype ? <a className="result-preview-button" href={prototype.href} target="_blank" rel="noreferrer">{previewLabel}<ArrowUpRight aria-hidden="true" /></a> : null}
+        {harness ? <HarnessPanel productionRunId={run.id} harness={harness} /> : null}
+      </div>
+    </ChatMessage>
+  ) : null;
+  return (
+    <section className="chat-stage" data-run-id={run.id} aria-label={stage?.label}>
+      <div className="chat-stage-divider">
+        <span>{stage?.label}</span>
+        {status ?? <span className="run-status">{revised ? "已按反馈重做" : getTaskStatusPresentation(getTaskStatus(run.status)).label}</span>}
+      </div>
+      {entries.map((entry, index) => (
+        <Fragment key={entry.key}>
+          {index === resolutionIndex ? attachments : null}
+          {entry.kind === "output" ? <ChatMessage><ResultDocument output={entry.text} /></ChatMessage> :
+            entry.kind === "activity" ? <ExecutionRecord events={entry.events} /> :
+              <ChatMessage user><p>{userActionText(entry.event, run, harnessCompleted)}</p></ChatMessage>}
+        </Fragment>
+      ))}
+      {resolutionIndex < 0 ? attachments : null}
+      {children}
+    </section>
+  );
+}
+
 export function RunConsole({
   initialRun,
   initialEvents,
-  initialHarness
+  initialHarness,
+  projectPrd = "",
+  history = []
 }: {
   initialRun: ProductionRun;
   initialEvents: RunEvent[];
   initialHarness: HarnessView | null;
+  projectPrd?: string;
+  history?: ConversationRun[];
 }) {
   const router = useRouter();
   const [run, setRun] = useState(initialRun);
   const [events, setEvents] = useState(() => mergeRunEvents([], initialEvents));
+  const [serverEvents, setServerEvents] = useState(initialEvents);
   const [approving, setApproving] = useState(false);
   const [approvalError, setApprovalError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState("");
   const [revising, setRevising] = useState(false);
   const [feedbackError, setFeedbackError] = useState<string | null>(null);
+  const [stopping, setStopping] = useState(false);
+  const [stopRequested, setStopRequested] = useState(false);
+  const [completedLocally, setCompletedLocally] = useState(false);
+  const [showLatest, setShowLatest] = useState(false);
   const [harness, setHarness] = useState(initialHarness);
+  // router.refresh preserves this component for the same Run. Reconcile the new
+  // server snapshot so durable confirmations also recover after a failed fetch.
+  if (serverEvents !== initialEvents) {
+    setServerEvents(initialEvents);
+    setEvents((current) => mergeRunEvents(current, initialEvents));
+    if (initialRun.updatedAt >= run.updatedAt) {
+      setRun(initialRun);
+      setHarness(initialHarness);
+    }
+    if (initialEvents.some((event) => event.type === "gate.approved")) setApprovalError(null);
+  }
+  const scrollRef = useRef<HTMLElement>(null);
+  const nearBottom = useRef(true);
   // The first server and client render must use the same value. Live time starts
   // after hydration so crossing a second boundary cannot change the HTML text.
   const [clock, setClock] = useState(() => Date.parse(initialRun.createdAt));
   const [connection, setConnection] = useState<"connected" | "disconnected" | "stale">("connected");
   const latestSequence = useRef(initialEvents.reduce((maximum, event) => Math.max(maximum, event.sequence), 0));
+
+  useEffect(() => {
+    const scroll = scrollRef.current;
+    if (scroll && nearBottom.current) scroll.scrollTop = scroll.scrollHeight;
+  }, [events, harness, feedbackError, approvalError, run.status]);
 
   useEffect(() => {
     if (run.status !== "ready" && run.status !== "running") return;
@@ -354,17 +460,12 @@ export function RunConsole({
     };
   }, [run.id, run.status]);
 
-  const output = useMemo(
-    () => events.filter((event) => event.type === "text.delta").map((event) => String(event.payload.delta ?? "")).join(""),
+  const hasVisibleOutput = useMemo(
+    () => buildChatEntries(events).some((entry) => entry.kind === "output" && entry.text.trim()),
     [events]
   );
-  const visibleOutput = useMemo(() => stripProductPrototype(output), [output]);
-  const visibleEvents = useMemo(
-    () => events.filter((event, index) => event.type !== "text.delta" || events[index + 1]?.type !== "text.delta").slice(-20),
-    [events]
-  );
-  const currentStageIndex = Math.max(0, simpleStages.findIndex((stage) => stage.ids.includes(run.stage)));
   const approvedEvent = events.find((event) => event.type === "gate.approved");
+  const revisionEvent = events.find((event) => event.type === "gate.revision_requested");
   const nextRunId = approvedEvent?.payload.nextRunId;
   const harnessCompleted = events.some((event) => event.type === "harness.completed");
   const nextAction = harnessCompleted
@@ -376,16 +477,16 @@ export function RunConsole({
     !["stage-design", "implementation", "real-acceptance"].includes(run.stage) ||
     (run.stage === "implementation" && harnessCompleted) ||
     Boolean(productPrototype);
-  const canApprove = Boolean(nextAction) && !approvedEvent && resultIsConfirmable && requiredArtifactsReady &&
+  const canRevise = !approvedEvent && !completedLocally && resultIsConfirmable &&
     (run.status === "waiting_approval" || run.status === "succeeded");
+  const canApprove = Boolean(nextAction) && canRevise && requiredArtifactsReady;
+  const active = run.status === "ready" || run.status === "running";
+  const abortPending = stopRequested || events.some((event) => event.type === "harness.command.abort");
+  const canCompose = canRevise || (run.status === "running" && !abortPending);
+  const busy = approving || revising || stopping;
   const elapsedSeconds = Math.max(0, Math.floor((clock - Date.parse(run.createdAt)) / 1_000));
   const elapsedLabel = elapsedSeconds < 60 ? `${elapsedSeconds} 秒` : `${Math.floor(elapsedSeconds / 60)} 分 ${elapsedSeconds % 60} 秒`;
   const emptyPresentation = getEmptyRunPresentation(run, resultIsConfirmable, elapsedLabel);
-  const stageReviewGuidance = getStageReviewGuidance(run.stage, productPrototype?.href ?? null);
-  const productPreviewLabel = stageReviewGuidance?.previewLabel ??
-    (run.stage === "implementation" && productPrototype
-      ? "查看制作结果"
-      : run.stage === "real-acceptance" && productPrototype ? "打开产品验收" : null);
   const connectionTaskStatus: TaskStatus = connection === "stale"
     ? "stale"
     : getTaskStatus(run.status, {
@@ -395,6 +496,14 @@ export function RunConsole({
   const taskStatus: TaskStatus = emptyPresentation.statusOverride ? "failed" : connectionTaskStatus;
   const taskPresentation = getTaskStatusPresentation(taskStatus);
 
+  async function syncSnapshot() {
+    const snapshot = await getProductionRun(run.id);
+    setRun(snapshot.run);
+    setHarness(snapshot.harness);
+    latestSequence.current = Math.max(latestSequence.current, snapshot.events.at(-1)?.sequence ?? 0);
+    setEvents((current) => mergeRunEvents(current, snapshot.events));
+  }
+
   async function approve() {
     setApproving(true);
     setApprovalError(null);
@@ -403,7 +512,9 @@ export function RunConsole({
       if (result.nextRun) router.push(`/runs/${result.nextRun.id}`);
       else {
         setRun(result.completedRun);
+        setCompletedLocally(true);
         setApproving(false);
+        await syncSnapshot().catch(() => setApprovalError("已确认，记录暂未同步，请刷新页面查看。"));
         router.refresh();
       }
     } catch (error) {
@@ -412,128 +523,194 @@ export function RunConsole({
     }
   }
 
-  async function revise() {
+  async function sendMessage() {
     const normalizedFeedback = feedback.trim();
-    if (!normalizedFeedback) return;
+    if (!normalizedFeedback || !canCompose || busy) return;
+    nearBottom.current = true;
     setRevising(true);
     setFeedbackError(null);
     try {
-      const result = await reviseProductionRun(run.id, normalizedFeedback);
-      router.push(`/runs/${result.run.id}`);
+      if (canRevise) {
+        const result = await reviseProductionRun(run.id, normalizedFeedback);
+        router.push(`/runs/${result.run.id}`);
+      } else {
+        const result = await steerProductionRun(run.id, normalizedFeedback, crypto.randomUUID());
+        if (!result.receipt.accepted) throw new Error("调整指令未被接受，请重试");
+        setFeedback("");
+        await syncSnapshot().catch(() => setFeedbackError("调整指令已发送，记录暂未同步，请稍后刷新。"));
+        setRevising(false);
+      }
     } catch (error) {
       setFeedbackError(getErrorMessage(error, "无法根据反馈重新分析"));
       setRevising(false);
     }
   }
 
+  async function stop() {
+    if (busy || abortPending || !window.confirm("确定终止这个产品流程吗？已有记录会保留；如需继续，请新建产品。")) return;
+    setStopping(true);
+    setFeedbackError(null);
+    nearBottom.current = true;
+    try {
+      const result = await abortProductionRun(run.id, "终止流程", crypto.randomUUID());
+      if (!result.receipt.accepted) throw new Error("停止请求未被接受，请重试");
+      setStopRequested(true);
+      await syncSnapshot().catch(() => setFeedbackError("停止请求已发送，记录暂未同步，请刷新查看。"));
+      router.refresh();
+    } catch (error) {
+      setFeedbackError(getErrorMessage(error, "无法终止流程"));
+    } finally {
+      setStopping(false);
+    }
+  }
+
   return (
-    <>
-      <section className="simple-progress" aria-label="产品生产进度">
-        <div className="simple-progress-compact">第 {currentStageIndex + 1} / {simpleStages.length} 步 · {simpleStages[currentStageIndex]?.label}</div>
-        <ol>
-          {simpleStages.map((stage, index) => (
-            <li className={index < currentStageIndex ? "done" : index === currentStageIndex ? "current" : ""} key={stage.label}>
-              <span>{index < currentStageIndex ? "✓" : index + 1}</span>{stage.label}
-            </li>
-          ))}
-        </ol>
-      </section>
+    <div className="run-console chat-workspace">
+      <main
+        className="chat-scroll"
+        id="ai-result"
+        aria-label="对话记录"
+        ref={scrollRef}
+        tabIndex={0}
+        onScroll={() => {
+          const scroll = scrollRef.current;
+          if (!scroll) return;
+          nearBottom.current = scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < 100;
+          setShowLatest(!nearBottom.current);
+        }}
+      >
+        <div className="chat-thread">
+          {projectPrd ? <ChatMessage user><p>{projectPrd}</p></ChatMessage> : null}
+          {history.map((item) => <ConversationStage key={item.run.id} {...item} />)}
+          <ConversationStage
+            run={run}
+            events={events}
+            harness={harness}
+            status={<span className={`run-status task-status-${taskStatus}`} role="status">{taskPresentation.label}</span>}
+          >
+            {(!hasVisibleOutput || active || run.status === "cancelled") ? (
+              <ChatMessage>
+                <div className="waiting-output" role="status">
+                  {emptyPresentation.showActivity ? <span className="waiting-pulse" /> : null}
+                  <p>{revisionEvent ? "已提交修改，前面的结果已保留。" : abortPending && active ? "正在停止，已有记录会保留。" : emptyPresentation.message}</p>
+                  {emptyPresentation.canRetry ? <RetryRunButton runId={run.id} /> : null}
+                </div>
+              </ChatMessage>
+            ) : null}
 
-      <section className={`task-status-card task-status-${taskStatus}`} aria-live="polite">
-        <span>{taskPresentation.label}</span>
-        <div><strong>{taskPresentation.now}</strong><p>{taskPresentation.action}</p></div>
-      </section>
+            {hasVisibleOutput && (run.status === "failed" || run.status === "blocked" || emptyPresentation.statusOverride) ? (
+              <ChatMessage>
+                <div className="result-footer failure-result-footer">
+                  <p>{run.error || "这一步没有完成，已有结果会保留。"}</p>
+                  <RetryRunButton runId={run.id} />
+                </div>
+              </ChatMessage>
+            ) : null}
 
-      <div className="run-layout run-layout-simple" id="ai-result">
-        <section className="panel run-output-panel">
-          <div className="run-panel-head">
-            <h2>这一步的结果</h2>
-            <span className={`run-status task-status-${taskStatus}`}>{taskPresentation.label}</span>
-          </div>
-          {visibleOutput ? <ResultDocument output={visibleOutput} /> : (
-            <div className="waiting-output">
-              {emptyPresentation.showActivity ? <span className="waiting-pulse" /> : null}
-              <p>{emptyPresentation.message}</p>
-              {emptyPresentation.canRetry ? <RetryRunButton runId={run.id} /> : null}
-            </div>
-          )}
-          {productPrototype && productPreviewLabel && resultIsConfirmable ? (
-            <div className="result-footer">
-              <a className="result-preview-button" href={productPrototype.href} target="_blank" rel="noreferrer">{productPreviewLabel}</a>
-            </div>
-          ) : null}
-          {visibleOutput && (run.status === "failed" || run.status === "blocked") ? (
-            <div className="result-footer failure-result-footer">
-              <p>{run.error || "这一步没有完成，已有结果会保留。"}</p>
-              <RetryRunButton runId={run.id} />
-            </div>
-          ) : null}
-          {canApprove && nextAction ? (
-            <div className="result-confirmation" aria-labelledby="confirmation-title">
-              <div className="confirmation-copy">
-                <strong id="confirmation-title">{nextAction.title}</strong>
-                <p>确认后会进入下一步并保留当前结果；本阶段不会部署或发布。</p>
-              </div>
-              <div className="confirmation-actions">
-                <button className="primary-button" type="button" onClick={() => void approve()} disabled={approving || revising} aria-busy={approving}>
-                  {approving ? "正在进入下一步…" : nextAction.button}
-                </button>
-                {approvalError ? <p className="form-error" role="alert">{approvalError}</p> : null}
-              </div>
-              <form className="review-feedback-form" onSubmit={(event) => { event.preventDefault(); void revise(); }}>
-                <label htmlFor={`review-feedback-${run.id}`}>补充回答或修改意见</label>
-                <textarea
-                  id={`review-feedback-${run.id}`}
-                  value={feedback}
-                  onChange={(event) => setFeedback(event.target.value)}
-                  placeholder="回答 AI 提出的问题，或说明需要修改的内容…"
-                  maxLength={2000}
-                  disabled={approving || revising}
-                />
-                <div className="review-feedback-actions">
-                  <span>提交后会重新生成这一步的完整结果，不会直接进入下一步。</span>
-                  <button className="secondary-button" type="submit" disabled={approving || revising || !feedback.trim()} aria-busy={revising}>
-                    {revising ? "正在重新分析…" : "提交并重新分析"}
+            {canApprove && nextAction ? (
+              <ChatMessage>
+                <section className="result-confirmation chat-confirmation" aria-labelledby="confirmation-title">
+                  <div className="confirmation-copy">
+                    <span className="inspector-section-label"><FileCheck2 aria-hidden="true" />等待验收</span>
+                    <strong id="confirmation-title">{nextAction.title}</strong>
+                    <p>确认后进入下一步并保留结果；本阶段不会部署或发布。</p>
+                  </div>
+                  <div className="confirmation-actions">
+                    <button className="primary-button" type="button" onClick={() => void approve()} disabled={busy || abortPending} aria-busy={approving}>
+                      <Check aria-hidden="true" />
+                      {approving ? "正在进入下一步…" : nextAction.button}
+                    </button>
+                  </div>
+                </section>
+              </ChatMessage>
+            ) : null}
+
+            {typeof nextRunId === "string" ? (
+              <ChatMessage>
+                <div className="confirmation-complete">
+                  <p>当前结果已经确认并保留。</p>
+                  <button className="secondary-button" type="button" onClick={() => router.push(`/runs/${nextRunId}`)}>
+                    查看下一步<ArrowUpRight aria-hidden="true" />
                   </button>
                 </div>
-                {feedbackError ? <p className="form-error" role="alert">{feedbackError}</p> : null}
-              </form>
+              </ChatMessage>
+            ) : null}
+
+            {typeof revisionEvent?.payload.revisionRunId === "string" ? (
+              <ChatMessage>
+                <button className="secondary-button" type="button" onClick={() => router.push(`/runs/${revisionEvent.payload.revisionRunId}`)}>
+                  查看修改后的版本<ArrowUpRight aria-hidden="true" />
+                </button>
+              </ChatMessage>
+            ) : null}
+
+            {approvedEvent?.payload.completed === true || completedLocally ? (
+              <ChatMessage>
+                <div className="confirmation-complete">
+                  <h2>{run.stage === "release-handoff" ? "发布候选已生成" : "本阶段已确认"}</h2>
+                  <p>{run.stage === "release-handoff"
+                    ? "上线流程已完成，产品停在待人工发布；没有执行部署。"
+                    : "不会自动进入下一阶段，也不会发布或推送。"}</p>
+                </div>
+              </ChatMessage>
+            ) : null}
+            {approvalError || feedbackError ? <ChatMessage><p className="form-error" role="alert">{approvalError || feedbackError}</p></ChatMessage> : null}
+          </ConversationStage>
+        </div>
+      </main>
+
+      <div className={`chat-composer-dock${canRevise || active ? "" : " chat-composer-dock-readonly"}`}>
+        {showLatest ? (
+          <button
+            className="chat-jump-latest"
+            type="button"
+            onClick={() => {
+              const scroll = scrollRef.current;
+              if (scroll) scroll.scrollTop = scroll.scrollHeight;
+              nearBottom.current = true;
+              setShowLatest(false);
+            }}
+          ><ArrowDown aria-hidden="true" />回到最新</button>
+        ) : null}
+
+        {canRevise || active ? (
+          <form className="chat-composer" onSubmit={(event) => { event.preventDefault(); void sendMessage(); }}>
+            <label className="sr-only" htmlFor={`chat-input-${run.id}`}>{canRevise ? "补充回答或修改意见" : "补充要求或调整指令"}</label>
+            <textarea
+              className="chat-composer-input"
+              id={`chat-input-${run.id}`}
+              value={feedback}
+              onChange={(event) => setFeedback(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing && event.keyCode !== 229) {
+                  event.preventDefault();
+                  void sendMessage();
+                }
+              }}
+              placeholder={canRevise ? "回答 AI 的问题，或说明要修改的内容…" : run.status === "ready" ? "AI 开始处理后，可以在这里补充要求…" : "继续补充要求，或告诉 AI 怎么调整…"}
+              rows={2}
+              maxLength={canRevise ? 2000 : 1000}
+              disabled={busy || !canCompose || abortPending}
+            />
+            <div className="chat-composer-actions">
+              <span>{canRevise ? "提交后重做当前步骤，不会直接前进。" : abortPending ? "正在停止…" : "生成过程中也可以补充要求。"}</span>
+              <div>
+                <button className="chat-stop-button" type="button" onClick={() => void stop()} disabled={busy || abortPending}>
+                  <Square aria-hidden="true" />{stopping || abortPending ? "正在停止…" : "终止流程"}
+                </button>
+                <button
+                  className="primary-button composer-submit"
+                  type="submit"
+                  disabled={busy || !canCompose || abortPending || !feedback.trim()}
+                  aria-busy={revising}
+                  aria-label={revising ? (canRevise ? "正在重新分析…" : "正在发送…") : canRevise ? "提交并重新分析" : "发送"}
+                  title={canRevise ? "提交并重新分析" : "发送"}
+                ><Send aria-hidden="true" /></button>
+              </div>
             </div>
-          ) : null}
-        </section>
+          </form>
+        ) : null}
       </div>
-
-      {harness ? <HarnessPanel productionRunId={run.id} runStatus={run.status} harness={harness} /> : null}
-
-      {typeof nextRunId === "string" ? (
-        <section className="confirmation-card confirmation-complete">
-          <div><h2>已确认</h2><p>当前结果已经保留，可以查看下一步。</p></div>
-          <button className="primary-button" type="button" onClick={() => router.push(`/runs/${nextRunId}`)}>查看下一步</button>
-        </section>
-      ) : null}
-
-      {approvedEvent?.payload.completed === true ? (
-        <section className="confirmation-card confirmation-complete">
-          <div>
-            <h2>{run.stage === "release-handoff" ? "发布候选已生成" : "本阶段已确认"}</h2>
-            <p>{run.stage === "release-handoff"
-              ? "上线流程已完成，产品停在待人工发布；没有执行部署。"
-              : "不会自动进入下一阶段，也不会发布或推送。"}</p>
-          </div>
-        </section>
-      ) : null}
-
-      <details className="run-log-details">
-        <summary>查看运行记录</summary>
-        <ol className="event-list">
-          {visibleEvents.map((event) => (
-            <li key={event.sequence}>
-              <span className="event-dot" />
-              <div><strong>{eventLabels[event.type] ?? "执行记录"}</strong>{event.type === "agent.failed" ? <p>{String(event.payload.message ?? "执行失败")}</p> : null}</div>
-            </li>
-          ))}
-        </ol>
-      </details>
-    </>
+    </div>
   );
 }

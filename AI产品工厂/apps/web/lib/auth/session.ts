@@ -6,9 +6,14 @@ export type CodexAccountSnapshot = {
 
 export const CODEX_ACCOUNT_SNAPSHOT_MAX_AGE_MS = 45_000;
 
-/** Test-only escape hatch. Normal development and production require Codex login. */
+/**
+ * The current personal workspace has no Web login gate. Set
+ * FACTORY_AUTH_REQUIRED=true when the login flow needs to be restored.
+ * This positive switch intentionally takes precedence over the retired
+ * FACTORY_AUTH_BYPASS setting that may remain in older local environments.
+ */
 export const isFactoryAuthBypassed = () =>
-  process.env.FACTORY_AUTH_BYPASS?.trim() === "true";
+  process.env.FACTORY_AUTH_REQUIRED?.trim() !== "true";
 
 export const isCodexAccountAuthenticated = (
   snapshot: CodexAccountSnapshot | null | undefined,

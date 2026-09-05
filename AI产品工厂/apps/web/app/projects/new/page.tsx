@@ -4,7 +4,7 @@ export default function NewProjectPage() {
   return (
     <div className="page page-narrow">
       <section className="form-intro">
-        <span>Naxe Agent</span>
+        <span>新建产品</span>
         <h1>说说你想做什么</h1>
       </section>
       <CreateProjectForm />

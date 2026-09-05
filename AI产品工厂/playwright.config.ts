@@ -7,7 +7,8 @@ const e2eDataDir = process.env.FACTORY_E2E_DATA_DIR || mkdtempSync(join(tmpdir()
 process.env.FACTORY_E2E_DATA_DIR = e2eDataDir;
 process.env.FACTORY_DATA_DIR = e2eDataDir;
 process.env.NEXT_DIST_DIR = ".next-e2e";
-process.env.FACTORY_AUTH_BYPASS = "true";
+delete process.env.FACTORY_AUTH_REQUIRED;
+delete process.env.FACTORY_AUTH_BYPASS;
 
 export default defineConfig({
   testDir: "./apps/web/e2e",

@@ -136,7 +136,8 @@ export class SqliteProjectRegistry implements ProjectRegistry {
         profile_json TEXT NOT NULL,
         blueprint_json TEXT NOT NULL,
         created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT
       );
 
       CREATE TABLE IF NOT EXISTS production_events (
@@ -177,6 +178,10 @@ export class SqliteProjectRegistry implements ProjectRegistry {
         ON run_events(run_id, sequence);
     `);
 
+    const projectColumns = database.prepare("PRAGMA table_info(projects)").all() as Array<{ name: string }>;
+    if (!projectColumns.some((column) => column.name === "deleted_at")) {
+      database.exec("ALTER TABLE projects ADD COLUMN deleted_at TEXT");
+    }
     const runColumns = database.prepare("PRAGMA table_info(production_runs)").all() as Array<{
       name: string;
     }>;
@@ -236,7 +241,7 @@ export class SqliteProjectRegistry implements ProjectRegistry {
   }
 
   get(id: string): ProductProject | null {
-    const row = this.database.prepare("SELECT * FROM projects WHERE id = ?").get(id) as
+    const row = this.database.prepare("SELECT * FROM projects WHERE id = ? AND deleted_at IS NULL").get(id) as
       | ProjectRow
       | undefined;
     return row ? toProject(row) : null;
@@ -244,7 +249,7 @@ export class SqliteProjectRegistry implements ProjectRegistry {
 
   list(): ProjectSummary[] {
     const rows = this.database
-      .prepare("SELECT * FROM projects ORDER BY updated_at DESC")
+      .prepare("SELECT * FROM projects WHERE deleted_at IS NULL ORDER BY updated_at DESC")
       .all() as ProjectRow[];
     return rows.map((row) => {
       const project = toProject(row);
@@ -262,6 +267,35 @@ export class SqliteProjectRegistry implements ProjectRegistry {
       )
       .all(projectId) as EventRow[];
     return rows.map(toEvent);
+  }
+
+  /** Logical deletion preserves records and never touches the product workspace. */
+  deleteProject(id: string): "deleted" | "not_found" | "running" {
+    return this.database.transaction(() => {
+      const project = this.database.prepare("SELECT deleted_at FROM projects WHERE id = ?").get(id) as
+        { deleted_at: string | null } | undefined;
+      if (!project) return "not_found" as const;
+      if (project.deleted_at) return "deleted" as const;
+      if (this.database.prepare("SELECT 1 FROM production_runs WHERE project_id = ? AND status = 'running' LIMIT 1").get(id)) {
+        return "running" as const;
+      }
+      const now = new Date().toISOString();
+      const queued = this.database.prepare("SELECT id FROM production_runs WHERE project_id = ? AND status = 'ready'").all(id) as Array<{ id: string }>;
+      for (const run of queued) {
+        this.database.prepare("UPDATE production_runs SET status = 'cancelled', error = ?, updated_at = ? WHERE id = ?")
+          .run("产品已删除，待执行任务已取消", now, run.id);
+        this.database.prepare("INSERT INTO run_events (id, run_id, type, payload_json, occurred_at) VALUES (?, ?, ?, ?, ?)")
+          .run(randomUUID(), run.id, "run.cancelled", JSON.stringify({ reason: "project_deleted" }), now);
+      }
+      this.database.prepare("UPDATE projects SET deleted_at = ?, updated_at = ? WHERE id = ?").run(now, now, id);
+      this.database.prepare("INSERT INTO production_events (id, project_id, type, payload_json, occurred_at) VALUES (?, ?, ?, ?, ?)")
+        .run(randomUUID(), id, "project.deleted", JSON.stringify({ workspaceDeleted: false }), now);
+      return "deleted" as const;
+    }).immediate();
+  }
+
+  close() {
+    this.database.close();
   }
 }
 
@@ -354,19 +388,23 @@ export class SqliteProductionRunStore implements ProductionRunStore {
       createdAt: now,
       updatedAt: now
     });
-    this.database
-      .prepare(
+    return this.database.transaction(() => {
+      // The insert and visibility check share a write transaction with deletion.
+      const result = this.database.prepare(
         `INSERT INTO production_runs
           (id, project_id, stage, objective, status, worker_id, error, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ? FROM projects WHERE id = ? AND deleted_at IS NULL`
       )
-      .run(run.id, run.projectId, run.stage, run.objective, run.status, null, null, now, now);
-    this.append(run.id, "run.created", { objective, stage });
-    return run;
+      .run(run.id, run.projectId, run.stage, run.objective, run.status, null, null, now, now, projectId);
+      if (result.changes !== 1) throw new Error("产品不存在或已删除");
+      this.append(run.id, "run.created", { objective, stage });
+      return run;
+    }).immediate();
   }
 
   get(id: string): ProductionRun | null {
-    const row = this.database.prepare("SELECT * FROM production_runs WHERE id = ?").get(id) as
+    const row = this.database.prepare(`SELECT r.* FROM production_runs r
+      JOIN projects p ON p.id = r.project_id WHERE r.id = ? AND p.deleted_at IS NULL`).get(id) as
       | RunRow
       | undefined;
     return row ? toRun(row) : null;
@@ -374,7 +412,8 @@ export class SqliteProductionRunStore implements ProductionRunStore {
 
   listForProject(projectId: string): ProductionRun[] {
     const rows = this.database
-      .prepare("SELECT * FROM production_runs WHERE project_id = ? ORDER BY created_at DESC")
+      .prepare(`SELECT r.* FROM production_runs r JOIN projects p ON p.id = r.project_id
+        WHERE r.project_id = ? AND p.deleted_at IS NULL ORDER BY r.created_at DESC`)
       .all(projectId) as RunRow[];
     return rows.map(toRun);
   }
@@ -382,7 +421,8 @@ export class SqliteProductionRunStore implements ProductionRunStore {
   claimNext(workerId: string): ProductionRun | null {
     const claim = this.database.transaction(() => {
       const row = this.database
-        .prepare("SELECT * FROM production_runs WHERE status = 'ready' ORDER BY created_at ASC LIMIT 1")
+        .prepare(`SELECT r.* FROM production_runs r JOIN projects p ON p.id = r.project_id
+          WHERE r.status = 'ready' AND p.deleted_at IS NULL ORDER BY r.created_at ASC LIMIT 1`)
         .get() as RunRow | undefined;
       if (!row) return null;
       const now = new Date().toISOString();

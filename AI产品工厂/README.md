@@ -2,7 +2,7 @@
 
 > 版本：V0.6，保留 G1–G9 产品流程，Agent 运行底座迁移为 Codex App Server
 >
-> 当前定位：供产品负责人本人使用的本地优先对话式 Web 控制台。用户先登录自己的 ChatGPT/OpenAI 账户，再由 Codex 在受控 Harness 内把不同类型数字产品从 PRD 生产到发布候选。
+> 当前定位：供产品负责人本人使用的本地优先对话式 Web 控制台。当前个人版直接进入工作台，不设置 Web 登录和退出环节；Codex 在受控 Harness 内把不同类型数字产品从 PRD 生产到发布候选。
 
 这里的“AI 产品工厂”指由 AI 驱动生产，不要求被生产的产品本身一定包含 AI。小游戏只是第一台试产样机，不是工厂的默认产品类型。
 
@@ -13,12 +13,12 @@
 ## 当前方向
 
 - 产品形态：可控制、可观察、可暂停和恢复的 WebUI，不是命令行脚本或一次性 Prompt。
-- 登录闸门：使用前必须通过 Codex App Server 登录自己的 ChatGPT/OpenAI 账户；前端只读取脱敏状态，不接触 Token。
+- 访问方式：当前个人版暂时关闭 Web 登录闸门，打开后直接进入工作台；认证接口保留备用，需要恢复时显式设置 `FACTORY_AUTH_REQUIRED=true`。
 - 核心架构：确定性 Runtime Core 管 Thread/Turn 生命周期、状态和闸门；Codex App Server 是唯一 Agent 执行引擎。
 - 协议层：产品项目映射 Thread、生产批次映射 Turn；版本化 `protocol.*` 事件进入 SQLite，旧 WebUI 事件在迁移期兼容双写。
 - 进程边界：Worker 独占 App Server 进程，Web 只通过 SQLite 命令队列和 SSE 通信，不在请求内启动长任务。
 - 素材工位：图片、音频、3D 分别建模，由 Codex 规划并调用真实工具；未配置的能力必须阻塞，不生成假素材。
-- 第一版用户：产品负责人本人，使用本人 OpenAI 账户；暂不实现多租户会话隔离和团队权限。
+- 第一版用户：产品负责人本人；暂不实现多租户会话隔离和团队权限。
 - 通用性：工厂内核不包含游戏、SaaS 或 Agent 产品的专属概念；产品差异由生产蓝图和能力包表达。
 - 第一条试产线：小游戏产品；待小游戏 PRD 提供后接入，用它验证第一条真实生产路线。
 - 开发方式：先按五步 SOP 生成需求事实、Harness 五要素、组件选型和七层架构，经确认后再生成代码；确定性 Workflow 管阶段，Agent Loop 管阶段内动作。
@@ -61,8 +61,7 @@
 ## 一句话流程
 
 ```text
-登录自己的 ChatGPT/OpenAI 账户
-→ 说出需求或导入 PRD
+说出需求或导入 PRD
 → 完整读取并锁定本次产品流程的三手册快照
 → 自动创建产品并立即开始分析
 → 查看当前阶段的完整结果
@@ -90,6 +89,7 @@
 - 根据画像组合能力包并编译生产蓝图；
 - 使用 SQLite 保存项目、蓝图和创建事件；
 - 项目列表与项目详情页；
+- 产品详情页右上角可“删除产品”，确认后从列表、对话和历史记录中移除；待执行任务自动取消，正在运行的流程需先终止。本地代码和生成文件保留，数据库采用逻辑删除，暂不提供页面恢复入口；
 - 游戏和非游戏画像的通用性测试；
 - Codex App Server JSON-RPC 客户端、脱敏账户状态、Thread/Turn 运行适配器；
 - Worker 领取生产批次、SQLite 命令队列与事件持久化；
@@ -127,12 +127,12 @@ npm run dev
 
 终端会显示实际访问地址，默认是 `http://localhost:3000`；端口被占用时 Next.js 会自动选择其他端口。
 
-默认从 `PATH` 启动 `codex app-server`。只有在 Codex 不在 `PATH` 中时才需在 `.env` 修改 `CODEX_BINARY`；`CODEX_MODEL` 留空时使用账户默认模型。用户从 Web 登录页发起 ChatGPT/OpenAI 登录，不需要向产品工厂填写模型 API Key。
+默认从 `PATH` 启动 `codex app-server`。只有在 Codex 不在 `PATH` 中时才需在 `.env` 修改 `CODEX_BINARY`；`CODEX_MODEL` 留空时使用本机 Codex 当前配置。WebUI 当前不提供登录和退出入口，也不要求填写模型 API Key。
 
 ## 最简单的使用方式
 
-1. 打开项目，使用自己的 ChatGPT/OpenAI 账户完成登录。
-2. 在首页输入一段产品需求，或者切换到“粘贴 PRD”。
+1. 打开项目，直接进入产品工厂首页。
+2. 输入一段产品需求，或者切换到“粘贴 PRD”。
 3. 点击发送，系统为本次产品流程锁定三手册完整快照，并立即开始分析。
 4. 等待当前阶段生成完整结果。
 5. 如果结果有问题，在确认区填写回答或修改意见，点击“提交并重新分析”。
@@ -167,4 +167,4 @@ npm run build:vefaas
 
 构建产物位于 `apps/web/.next/standalone`，启动命令为 `node apps/web/server.js`，端口为 `3000`。部署时必须显式指定 Node 20 runtime、构建命令、产物路径、启动命令和端口，不使用 CLI 的自动推断结果。
 
-正式环境变量键见 [`.env.example`](./.env.example)。对象存储凭据和 `SENTRY_DSN` 只能保存在部署平台 Secret 中，不得写入 Git、部署命令或文档。OpenAI 登录凭据由 Codex 自身管理，不作为产品工厂环境变量传入。
+正式环境变量键见 [`.env.example`](./.env.example)。对象存储凭据和 `SENTRY_DSN` 只能保存在部署平台 Secret 中，不得写入 Git、部署命令或文档。当前个人版默认 `FACTORY_AUTH_REQUIRED=false`；如果未来公开部署，必须先恢复登录闸门并重新完成数据隔离与鉴权验收。

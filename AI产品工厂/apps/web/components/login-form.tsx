@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { ArrowUpRight, ShieldCheck, X } from "lucide-react";
 import {
   cancelLogin,
   chatGptLoginResultSchema,
@@ -208,14 +209,17 @@ export function LoginForm({ nextPath = "/" }: { nextPath?: string }) {
           rel="noreferrer"
         >
           {popupBlocked ? "打开 OpenAI 登录页面" : "没有看到登录页面？重新打开"}
+          <ArrowUpRight aria-hidden="true" />
         </a>
       ) : null}
       <div className="login-actions">
         <button className="primary-button" type="submit" disabled={active}>
+          <ShieldCheck aria-hidden="true" />
           {phase === "starting" ? "正在连接…" : phase === "awaiting_auth" ? "等待登录完成…" : "使用 OpenAI 账户登录"}
         </button>
         {phase === "awaiting_auth" && loginId ? (
           <button className="secondary-button" type="button" onClick={cancel}>
+            <X aria-hidden="true" />
             取消
           </button>
         ) : null}

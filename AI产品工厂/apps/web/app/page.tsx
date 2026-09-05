@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ArrowUpRight, Clock3 } from "lucide-react";
 import { getProductFactory } from "@factory/production";
 import { SqliteProductionRunStore } from "@factory/records";
 import { hasConfirmableAgentResult } from "@factory/shared";
@@ -34,7 +35,6 @@ export default function HomePage() {
   return (
     <div className="page factory-home">
       <header className="factory-home-header">
-        <span>Naxe Agent</span>
         <h1>今天想做什么产品？</h1>
       </header>
 
@@ -43,7 +43,7 @@ export default function HomePage() {
       {attentionRun ? (
         <section className="attention-card" id="attention">
           <div>
-            <span>{attentionRun.needsApproval ? "等你确认" : runStatusLabels[attentionRun.run.status]}</span>
+            <span><Clock3 aria-hidden="true" />{attentionRun.needsApproval ? "等你确认" : runStatusLabels[attentionRun.run.status]}</span>
             <h2>{attentionRun.project.name}</h2>
             <strong>{stageLabels[attentionRun.run.stage]}</strong>
           </div>
@@ -51,6 +51,7 @@ export default function HomePage() {
             <CancelRunButton runId={attentionRun.run.id} />
             <Link href={`/runs/${attentionRun.run.id}`} className="primary-button">
               {attentionRun.needsApproval ? "去确认" : "查看进度"}
+              <ArrowUpRight aria-hidden="true" />
             </Link>
           </div>
         </section>

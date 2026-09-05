@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { X } from "lucide-react";
 import { abortProductionRun } from "@/features/production-run/api";
 import { getErrorMessage } from "@/lib/api/client";
 
@@ -26,6 +27,7 @@ export function CancelRunButton({ runId }: { runId: string }) {
   return (
     <div className="attention-cancel-control">
       <button className="secondary-button" type="button" onClick={() => void cancel()} disabled={cancelling}>
+        <X aria-hidden="true" />
         {cancelling ? "取消中…" : "取消"}
       </button>
       {error ? <span className="attention-cancel-error" role="alert">{error}</span> : null}

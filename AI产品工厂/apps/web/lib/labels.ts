@@ -37,7 +37,7 @@ export const runStatusLabels: Record<ProductionRun["status"], string> = {
 };
 
 const waitingApprovalLabels: Partial<Record<ProductionStage, string>> = {
-  intake: "产品理解待确认",
+  intake: "需求分析待确认",
   adaptation: "技术方案待确认",
   "stage-design": "开发计划待确认",
   implementation: "制作结果待确认",
@@ -62,7 +62,7 @@ export const getProjectPrimaryActionLabel = (
   : productFlowCompleted ? "查看完成记录" : needsApproval ? "去确认" : "继续";
 
 export const stageLabels: Record<ProductionStage, string> = {
-  intake: "理解产品",
+  intake: "需求分析",
   adaptation: "确定技术方案",
   "stage-design": "生成开发计划",
   implementation: "制作产品",
